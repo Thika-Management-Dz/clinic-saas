@@ -1,22 +1,32 @@
 // packages/db/src/schema/index.ts
 //
-// Drizzle schema barrel. Phase 3 scaffold: empty.
+// Drizzle schema barrel. Per Roadmap v2.1 §4.3.6.
 //
-// Schema files added in subsequent phases (per Roadmap v2.1 §3.9.2):
-//   - clinic.ts        (Phase 4 — tenant + RLS foundation)
-//   - app_user.ts      (Phase 5 — Authentication & Tenant Interceptor)
-//   - role.ts          (Phase 5)
-//   - audit_log.ts     (Phase 4 — append-only, hash-chained)
-//   - patient.ts       (Phase 10 — Core Domain Modules)
-//   - encounter.ts     (Phase 10)
-//   - dental.ts        (Phase 10 — FDI ISO 3950:2016 tooth notation)
-//   - appointment.ts   (Phase 10)
-//   - invoice.ts       (Phase 11 — Billing + Chargily Pay)
+// Re-exports all schema files so apps/api can import via:
+//   import { clinic, appUser, auditLog } from '@clinic-saas/db/schema';
 //
 // Every tenant-scoped table MUST have:
 //   - tenant_id UUID NOT NULL REFERENCES clinic(id)
+//     (exception: app_user has nullable tenant_id for super_admin)
 //   - ENABLE + FORCE ROW LEVEL SECURITY (per ADR-001)
 //   - tenant_id index WHERE deleted_at IS NULL
 //   - deleted_at TIMESTAMPTZ (soft delete per Blueprint §9.1)
+//
+// Phase 4 tables (this file):
+//   - clinic            (tenant entity — NOT tenant-scoped, no RLS)
+//   - app_user          (tenant-scoped, nullable tenant_id for super_admin)
+//   - role              (global — no RLS)
+//   - privilege         (global — no RLS)
+//   - role_privilege    (global — no RLS)
+//   - role_inheritance  (global — no RLS)
+//   - user_role         (tenant-scoped)
+//   - audit_log         (tenant-scoped, append-only)
 
-export {};
+export * from './clinic';
+export * from './app_user';
+export * from './role';
+export * from './privilege';
+export * from './role_privilege';
+export * from './role_inheritance';
+export * from './user_role';
+export * from './audit_log';
