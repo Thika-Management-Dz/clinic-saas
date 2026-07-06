@@ -244,3 +244,63 @@ re-run.
   by Roadmap phase.
 - [Breach Response](./breach-response.md) — what to do if a token is
   accidentally committed or exposed.
+
+## Testing the setup scripts
+
+A plain-bash test script at `tests/test-setup-workstation.sh` validates the
+two fixes from Task 11 (PR #6):
+
+1. The `.npmrc` prefix-conflict detection + removal (`setup-workstation.sh`
+   lines 96-103). Tests: prefix= removal, globalconfig= removal, both
+   together, idempotency, no-op on clean .npmrc, no-op on missing .npmrc,
+   leading-whitespace edge case, spaces-around-= edge case.
+2. The `verify-workstation.sh` `v`-prefix comparison fix (line 93). Tests:
+   correct `v24.18.0` matches `v$NODE_VERSION`; bare `24.18.0` does NOT
+   match; wrong patch does NOT match; regression test confirming the old
+   buggy comparison would have failed.
+
+### Running the tests
+
+```bash
+# Via pnpm (preferred — added in Task 17-a):
+pnpm test:scripts
+
+# Or directly:
+bash tests/test-setup-workstation.sh
+./tests/test-setup-workstation.sh
+```
+
+The tests are self-contained — they create a temp directory, write temp
+`.npmrc` files, run the exact `sed`/`grep` commands from
+`setup-workstation.sh` against them, and assert the expected behavior. No
+network access, no `nvm`/`Node`/`pnpm` required (the tests extract the
+logic rather than invoking the full `setup-workstation.sh` end-to-end).
+
+Exit code 0 = all tests passed. Non-zero = at least one test failed; the
+output lists each failure with expected vs. actual.
+
+### When to run
+
+- **After any change to `scripts/setup-workstation.sh` or
+  `scripts/verify-workstation.sh`** — especially changes to the `.npmrc`
+  conflict-detection logic or the version-comparison logic.
+- **In CI (Phase 7+)** — alongside `pnpm lint && pnpm typecheck && pnpm test`.
+  Until Phase 7 lands, run manually before merging any PR that touches the
+  setup scripts.
+
+### Why not `bats`?
+
+`bats` (Bash Automated Testing System) was considered (Task 14 JC-6-3
+originally deferred this test to Phase 8 with `bats` as the expected
+framework). Task 17-a pulled the test forward but chose plain bash
+assertions instead of `bats` because:
+
+- `bats` would add another tool to the workstation setup (a dev dependency
+  or a system package), increasing the install surface for marginal benefit.
+- The test surface is small (2 fixes, ~10 test cases) — plain bash
+  assertions are sufficient and have zero dependencies beyond `bash` itself.
+- Phase 8 (Testing Foundations) will add Vitest + Playwright; the shell
+  tests can stay as plain bash or be migrated to `bats` then if the test
+  surface grows.
+
+See the Task 17-a worklog entry in `WORKLOG.md` for the full reasoning.
