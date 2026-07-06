@@ -354,3 +354,53 @@ Stage Summary:
 - main-protection ruleset: UNCHANGED at session start (verified at full strictness). Will be relaxed only for the fix PR squash-merge, then immediately restored. Verification GET will follow.
 - SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) was shared in chat for this session. The previous session's PAT was also shared in the prior chat — both must be considered compromised. Rotate at https://github.com/settings/tokens after the session ends.
 - Scope boundary respected: did NOT proceed to Roadmap Phase 4 (Local Database & RLS Foundation) or any business logic. Task 14 (judgment calls) is the next step in this session.
+
+---
+
+Task ID: 14
+Agent: Super Z (Reassessment of Tasks 11 + 12 judgment calls)
+Task: For each of the 17 judgment calls (JC-6-1 through JC-9-6) flagged in the AI Agent Review Session comments on PRs #6, #7, #8, #9, decide ACCEPT / CHANGE / DEFER. For each CHANGE, open a fix PR. For each DEFER, document the target phase. If all are ACCEPT/DEFER, append this worklog entry via a docs-only PR.
+
+Work Log:
+- Read the AI Agent Review Session comments on PRs #6, #7, #8, #9 (fetched via the GitHub API in Task 13 Step 2). Extracted the 17 judgment calls and the author's reasoning for each.
+- Cross-referenced each judgment call against the Task 13 critical review findings (Issue #11) to ensure consistency.
+- For each judgment call, applied the test: "Was the author's reasoning sound at the time? Has the trade-off shifted? Is there a clearly better alternative?" Only CHANGE if the answer is "no, yes, yes" — i.e., the decision was wrong AND a clearly better option exists AND the cost of switching is justified.
+
+Decisions (17 judgment calls total):
+
+| JC-ID | Decision | PR # (if CHANGE) | Target phase (if DEFER) | Justification (1-2 sentences) |
+|-------|----------|------------------|-------------------------|-------------------------------|
+| JC-6-1 | ACCEPT | — | — | Auto-remove with clear warning is appropriate for AI-agent sandboxes where .npmrc prefix is the default state. Destructiveness is minimal (one line, other lines preserved) and documented in three places (5 warn lines + runbook + worklog). Fail-fast would block the script for the common case with no recovery path beyond operator intervention. |
+| JC-6-2 | ACCEPT | — | — | sed is more universal than nvm-specific flags. The author's reasoning (clean log, transparent to operator) is sound. Switching to `nvm use --delete-prefix` would couple the script to nvm's flag surface and provide no functional benefit. |
+| JC-6-3 | DEFER | — | Phase 8 (Testing Foundations) | Phase 1 has no test framework; adding `bats` would add another tool to the workstation setup. The end-to-end run IS the test (recorded in worklog with before/after exit codes). Phase 8 will add Vitest + shell tests; a `tests/setup-workstation.bats` can be added then. |
+| JC-7-1 | ACCEPT | — | — | `.gitkeep` files would need cleanup in subsequent PRs (each PR creates directories with real content). The workspace glob `apps/*` and `packages/*` handle the empty case gracefully (turbo: "0 tasks executed"). Directories created with real content is cleaner than placeholder files. |
+| JC-7-2 | ACCEPT | — | — | Standard monorepo practice. Lockfile enables deterministic installs, Renovate tracking, and CI reproducibility. The .gitignore already excludes `node_modules/` but NOT lockfiles, so this is consistent. |
+| JC-7-3 | ACCEPT | — | — | Roadmap §3.1.2 explicitly lists the `db:generate`/`db:migrate`/`db:studio` scripts in the root package.json. Following the Roadmap literally is correct. The failure mode (clear "no projects matched" error if invoked before PR B) is acceptable for the brief window between PR A and PR B. |
+| JC-8-1 | DEFER | — | Phase 6 (RTL/i18n Scaffold) | The 13 shadcn components wire to the design system, which lands in Phase 6. Adding them now would bloat the diff (13 component files + transitive Radix deps) and the components would need to be re-audited for RTL when Phase 6 lands anyway. The current config (components.json + cn helper + globals.css) is sufficient to make `pnpm dlx shadcn@latest add` work in Phase 6. |
+| JC-8-2 | ACCEPT | — | — | The official `@nestjs/eslint-plugin` does not exist on npm (returns 404). The community `eslint-plugin-nestjs` is not widely adopted (low downloads, sparse maintenance). The base `typescript-eslint` `recommendedTypeChecked` rules cover the important surface (type safety, unused vars). The `{ nest: true }` flag is reserved for future use. |
+| JC-8-3 | ACCEPT | — | — | The 8 seed keys (appName, loading, save, cancel, delete, edit, search, close) are minimal and serve as a working seed for Phase 6. The Roadmap §3.10.3 says "Empty ... common.json" but the spirit is "no real implementation yet" — 8 generic UI labels are not real implementation. They give Phase 6 a starting point and verify the i18n package builds. |
+| JC-8-4 | ACCEPT | — | — | Next.js 16 requires React 19. shadcn/ui new-york style supports React 19. React 18 would conflict with Next.js 16 (peerDep mismatch). React 19 is the correct choice. |
+| JC-8-5 | ACCEPT | — | — | Testing showed `allowBuilds` alone is sufficient in pnpm 11.10 — `onlyBuiltDependencies` is silently ignored when `allowBuilds` is set. The PR review's claim that "pnpm 11.10 needs both" was inaccurate. However, the redundancy is harmless and `onlyBuiltDependencies` may still be recognized by older pnpm versions or other tools (Renovate, Dependabot). Removing it would save 7 lines of YAML but wouldn't change behavior. Not worth a fix PR. |
+| JC-9-1 | ACCEPT | — | — | No text is correct per AGENTS.md Do-NOT #4 ("Do NOT hardcode user-visible text — not even a single label"). Phase 6 will replace with `t('common.appName')` via next-intl. Hardcoding "Hello World" would violate AGENTS.md. The styled placeholder (a colored bar) proves the CSS + layout pipeline works without violating the i18n rule. |
+| JC-9-2 | ACCEPT | — | — | `verbatimModuleSyntax: false` is necessary for CommonJS compilation (NestJS's default). `verbatimModuleSyntax` is an ESM-only feature; forcing it on CommonJS code produces TS1295 errors. ESM NestJS (`module: NodeNext`) would be a bigger change with its own trade-offs (decorator metadata, runtime compatibility). Acceptable to override per-framework. |
+| JC-9-3 | RESOLVED | PR #10 (Task 13 fix) | — | `import/order` was disabled because `eslint-plugin-import` 2.32.0 crashes on ESLint 10 (`getTokenOrCommentAfter` removed from SourceCode). PR #10 switched to `eslint-plugin-import-x` (a fork that supports ESLint 10) and re-enabled `import/order` as a warning. This is no longer a deferred judgment call — it's been resolved. |
+| JC-9-4 | ACCEPT | — | — | Root `eslint.config.mjs` as a fallback is a standard ESLint 9+ pattern (config search walks up the tree). Adding per-package configs would be more files for marginal benefit (the root config uses `createConfig({})` which is the base profile — appropriate for packages without framework-specific needs). |
+| JC-9-5 | ACCEPT | — | — | The `eslint-config` package is configuration, not code. `flat-config.js` is a `.js` file that can't be type-checked by `projectService` without a tsconfig (and adding a tsconfig just for one `.js` file is overkill). The package's correctness is verified by the workspace's `pnpm lint` (every consumer runs eslint with this config). |
+| JC-9-6 | ACCEPT | — | — | Worker HTTP server on port 3002 is useful for k8s liveness probes (Phase 15+) and consistency with the API. Fastify is lightweight; the cost is minimal. Removing `listen()` would save ~3 lines but lose the health check capability. The worker's BullMQ module is registered but no queues are added, so the HTTP server is the only outward-facing surface. |
+
+Summary:
+- ACCEPT: 14 (JC-6-1, JC-6-2, JC-7-1, JC-7-2, JC-7-3, JC-8-2, JC-8-3, JC-8-4, JC-8-5, JC-9-1, JC-9-2, JC-9-4, JC-9-5, JC-9-6)
+- DEFER: 2 (JC-6-3 → Phase 8, JC-8-1 → Phase 6)
+- RESOLVED (by Task 13 PR #10): 1 (JC-9-3)
+- CHANGE: 0
+
+No fix PRs needed for Task 14 — all judgment calls are ACCEPT or DEFER. JC-9-3 was incidentally resolved by PR #10 (the Task 13 BLOCK-1 fix switched to `eslint-plugin-import-x`, which re-enabled `import/order`).
+
+Stage Summary:
+- Task 14 deliverable: this worklog entry (docs-only). No fix PRs opened. All 17 judgment calls documented with ACCEPT/DEFER/RESOLVED + justification.
+- JC-9-3 (`import/order` disabled) was previously a DEFER but is now RESOLVED by PR #10. The judgment call is closed.
+- JC-6-3 (no automated test for the .npmrc fix) is deferred to Phase 8 (Testing Foundations) — a `tests/setup-workstation.bats` can be added then.
+- JC-8-1 (13 shadcn components deferred) is deferred to Phase 6 (RTL/i18n Scaffold) — the components will be added when the design system is wired into apps/web.
+- main-protection ruleset: UNCHANGED in this task (no PRs merged). Still at full strictness (1 approval + code-owner + thread resolution, no bypass actors, enforcement active) — verified in Task 13.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) was shared in chat for this session. Rotate at https://github.com/settings/tokens after the session ends.
+- Scope boundary respected: did NOT proceed to Roadmap Phase 4 (Local Database & RLS Foundation) or any business logic. Task 14 scope was the 17 judgment calls only — that's complete.
