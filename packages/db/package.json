@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/seed.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
@@ -22,7 +23,9 @@
   },
   "devDependencies": {
     "@clinic-saas/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
     "drizzle-kit": "^0.30.0",
+    "tsx": "^4.23.0",
     "typescript": "^6.0.3"
   }
 }
