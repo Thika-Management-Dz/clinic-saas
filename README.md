@@ -24,9 +24,17 @@ Turborepo · pnpm · Next.js 16 PWA (App Router) · NestJS modular monolith · P
 ## Setup
 
 ```bash
+# Phase 1 — toolchain (one-time per sandbox)
+./scripts/setup-workstation.sh
+./scripts/verify-workstation.sh
+cp .env.example .env.local && $EDITOR .env.local   # fill in tokens
+
+# Phase 3+ — install workspace deps and run
 pnpm install
 pnpm dev          # starts web + api + worker via Turborepo
 ```
+
+See [`docs/runbooks/workstation-setup.md`](./docs/runbooks/workstation-setup.md) for the full workstation setup procedure.
 
 ## Testing
 
@@ -37,12 +45,42 @@ pnpm lint
 pnpm typecheck
 ```
 
+## Workspace Layout
+
+Turborepo + pnpm workspaces. Phase 3 (Monorepo Scaffold) introduces the
+following structure; subsequent phases fill in the implementation.
+
+```
+clinic-saas/
+├── apps/
+│   ├── web/              # Next.js 16 PWA (App Router) — @clinic-saas/web
+│   ├── api/              # NestJS modular monolith (Fastify) — @clinic-saas/api
+│   ├── worker/           # NestJS + BullMQ (crons, reconciliation) — @clinic-saas/worker
+│   └── patient-portal/   # Stub, reserved for Phase 12+ — @clinic-saas/patient-portal
+├── packages/
+│   ├── tsconfig/         # Shared tsconfig presets — @clinic-saas/tsconfig
+│   ├── eslint-config/    # Shared ESLint flat config — @clinic-saas/eslint-config
+│   ├── db/               # Drizzle ORM schema + migrations — @clinic-saas/db
+│   ├── auth/             # Better Auth wrapper — @clinic-saas/auth
+│   ├── ui/               # shadcn/ui component library — @clinic-saas/ui
+│   ├── i18n/             # next-intl messages + config — @clinic-saas/i18n
+│   └── contracts/        # tRPC routers + Zod schemas — @clinic-saas/contracts
+├── pnpm-workspace.yaml
+├── turbo.json
+├── package.json
+└── tsconfig.base.json    # (added in Phase 3 PR B via packages/tsconfig)
+```
+
+Apps import from `packages/*` via `workspace:*` dependencies. Cross-package
+imports use the package's public API (`src/index.ts`) only — internal imports
+are blocked by `eslint-plugin-import` `no-internal-modules` (per Blueprint §7.4).
+
 ## Documentation
 
 - [Technical Blueprint v2.0](./docs/blueprint-v2.0.md) — authority on architecture & data model
 - [Atomic Delivery Roadmap v2.1](./docs/roadmap-v2.1.md) — authority on execution order
 - [AGENTS.md](./AGENTS.md) — universal AI-agent instruction file
-- [Architecture Decision Records](./docs/adr/) — ADR-001 … ADR-009
+- [Architecture Decision Records](./docs/adr/) — ADR-001 … ADR-010
 - [Conventions](./docs/conventions/) — testing, i18n, RTL, naming
 - [Domain Glossary](./docs/domain/glossary.md) — trilingual (FR/AR/EN) terminology source of truth
 - [Runbooks](./docs/runbooks/) — breach response, backup recovery, Dexie→PowerSync migration
