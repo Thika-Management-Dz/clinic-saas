@@ -56,6 +56,13 @@ export async function createConfig(opts = {}) {
           ...globals.node,
           ...(next ? globals.browser : {}),
         },
+        parserOptions: {
+          // Enable type-aware linting (required by
+          // tseslint.configs.recommendedTypeChecked). projectService
+          // auto-detects the nearest tsconfig.json for each file —
+          // no need to specify tsconfigRootDir or project paths.
+          projectService: true,
+        },
       },
     },
     {
@@ -72,14 +79,20 @@ export async function createConfig(opts = {}) {
           },
         ],
         'import/no-cycle': 'error',
-        'import/order': [
-          'warn',
-          {
-            'newlines-between': 'always',
-            alphabetize: { order: 'asc', caseInsensitive: true },
-            groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
-          },
-        ],
+        // NOTE: 'import/order' is disabled because eslint-plugin-import
+        // 2.32.0 crashes on ESLint 10.x (getTokenOrCommentAfter was
+        // removed from SourceCode in ESLint v10). Re-enable when
+        // eslint-plugin-import ships ESLint 10 support. In the meantime,
+        // import ordering is enforced by Prettier's import sorting (if
+        // configured) or by code review.
+        // 'import/order': [
+        //   'warn',
+        //   {
+        //     'newlines-between': 'always',
+        //     alphabetize: { order: 'asc', caseInsensitive: true },
+        //     groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+        //   },
+        // ],
       },
     },
     {
@@ -92,6 +105,7 @@ export async function createConfig(opts = {}) {
         '**/*.config.js',
         '**/*.config.mjs',
         '**/*.config.ts',
+        '**/next-env.d.ts',
       ],
     },
   ];

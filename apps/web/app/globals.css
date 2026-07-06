@@ -1,0 +1,9 @@
+/* apps/web/app/globals.css
+ *
+ * Re-exports the design token layer from @clinic-saas/ui.
+ * apps/web does NOT define its own CSS variables — the single source of
+ * truth is packages/ui/src/styles/globals.css. This file just re-imports
+ * it so Next.js picks it up via app/layout.tsx.
+ */
+
+@import "@clinic-saas/ui/styles/globals.css";

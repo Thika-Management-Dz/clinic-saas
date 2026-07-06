@@ -6,6 +6,7 @@ allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true
   esbuild: true
+  msgpackr-extract: true
   sharp: true
 
 # pnpm 11+ reads settings from pnpm-workspace.yaml (not from package.json's
@@ -13,11 +14,13 @@ allowBuilds:
 #
 # onlyBuiltDependencies: explicit allowlist of packages whose postinstall /
 # install build scripts are allowed to run. pnpm 11 blocks all build scripts
-# by default as a supply-chain hardening measure; these four are
+# by default as a supply-chain hardening measure. These five are
 # well-known native-binary packages used by Next.js (@swc/core, sharp),
-# Drizzle Kit / Vite (esbuild), and NestJS file watching (@parcel/watcher).
+# Drizzle Kit / Vite (esbuild), NestJS file watching (@parcel/watcher),
+# and BullMQ (msgpackr-extract — native msgpack unpacker for Redis).
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - '@swc/core'
   - 'esbuild'
   - 'sharp'
+  - 'msgpackr-extract'

@@ -10,9 +10,7 @@
   "files": [
     "flat-config.js"
   ],
-  "scripts": {
-    "lint": "eslint ."
-  },
+  "scripts": {},
   "peerDependencies": {
     "@eslint/js": "^10.0.0",
     "@next/eslint-plugin-next": "^16.0.0",
