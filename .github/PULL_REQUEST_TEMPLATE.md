@@ -45,6 +45,19 @@
 - [ ] FDI tooth notation only
 - [ ] No new tenant-scoped table without ENABLE + FORCE RLS + tenant_id index
 
+## AI Agent Review Session
+
+> Required before merge (per [ADR-010](../docs/adr/ADR-010.md) and
+> [`docs/runbooks/ai-agent-pr-review.md`](../docs/runbooks/ai-agent-pr-review.md)).
+> Replaces the always-on AI PR review bot from Roadmap §2.6.
+
+- [ ] Review session run (fresh-context AI agent, not the author agent)
+- [ ] Session outcome posted as a PR comment below
+- [ ] No unresolved `BLOCK`-level findings
+
+**Session comment link:** <!-- paste the URL of the review-session PR comment -->
+**Outcome:** <!-- ✅ PASS / ⚠️ PASS-WITH-NITS / ❌ BLOCKED -->
+
 ## Assumptions made (for AI-agent PRs)
 
 <!-- Document any assumptions you made when the spec was ambiguous -->
