@@ -37,9 +37,6 @@ drizzle/meta/
 *.sqlite-journal
 
 # IDE
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
 .idea/
 
 # OS
