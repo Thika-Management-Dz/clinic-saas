@@ -15,6 +15,7 @@
 // event bus per Blueprint §7.2). Event payloads are JSON-serializable.
 
 import { Module } from '@nestjs/common';
+
 import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
 

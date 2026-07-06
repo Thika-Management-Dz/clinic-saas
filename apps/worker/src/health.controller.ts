@@ -2,6 +2,7 @@
 // Mirror of apps/api/src/health.controller.ts — worker health endpoint.
 
 import { Controller, Get } from '@nestjs/common';
+
 import { HealthService, type WorkerHealthStatus } from './health.service.js';
 
 @Controller()

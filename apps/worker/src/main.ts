@@ -23,6 +23,7 @@ import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+
 import { WorkerModule } from './worker.module.js';
 
 async function bootstrap(): Promise<void> {
