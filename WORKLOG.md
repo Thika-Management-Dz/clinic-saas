@@ -1,0 +1,188 @@
+# Shared Multi-Agent Worklog — Clinic Management SaaS
+
+This file is the single source of truth for cross-session work on the
+Thika-Management-Dz/clinic-saas project. Every AI agent session that does
+substantive work appends a new entry here (as a commit in whatever PR the
+session is working on, or as a tiny docs-only PR if the session does no
+other code work).
+
+**Convention:**
+- Append new entries at the bottom; do not overwrite or edit past entries.
+- Each entry begins with a line containing only `---`.
+- Each entry includes: Task ID, Agent, Task, Work Log, Stage Summary.
+- Entries are written from the agent's perspective at the time of work —
+  they are a historical record, not a living doc. Corrections go in a new
+  entry, not by editing old ones.
+
+**How to read this file as a new session:** scan from top to bottom to
+understand what previous sessions have done. The most recent entry is at
+the bottom. Pay special attention to "Stage Summary" sections — they
+capture key results, decisions, and open follow-ups.
+
+---
+
+Task ID: 7
+Agent: Super Z (Renovate onboarding session)
+Task: Verify Renovate is installed and healthy on Thika-Management-Dz/clinic-saas; if the onboarding PR exists, review + merge it via the relax-ruleset workflow; verify the Dependency Dashboard issue appears. Scoped to Roadmap Phase 0 + Phase 2 only — do NOT proceed to Phase 1 / Phase 3 / code generation.
+
+Work Log:
+- Listed open PRs on the repo via GET /repos/Thika-Management-Dz/clinic-saas/pulls?state=open → 0 open PRs. No Renovate onboarding PR yet.
+- Verified Renovate app installation at the org level via GET /orgs/Thika-Management-Dz/installations → 1 installation found, app slug renovate, installation id 144789075, target_type=Organization, repository_selection=selected.
+- Confirmed clinic-saas is in the selected-repo set via GET /user/installations/144789075/repositories → 1 repo returned: Thika-Management-Dz/clinic-saas. Install scope is correct.
+- Read existing .github/renovate.json5 from main (838 bytes) — already configured with config:recommended, :semanticCommits, :dependencyDashboard, schedule:earlyMondays, timezone Africa/Algiers, rangeStrategy=bump, automerge=false, security vulnerabilityAlerts enabled. Because a config already exists, Renovate is expected to SKIP the onboarding PR and go straight to creating the Dependency Dashboard issue on its first run.
+- Inspected repo rulesets via GET /repos/.../rulesets → two rulesets: main-protection (id 18567129, target=branch, enforcement=active) and tag-protection (id 18567121, target=tag, enforcement=active).
+- Captured full main-protection ruleset state via GET /repos/.../rulesets/18567129 for the restore step that will be needed when the onboarding PR (or dashboard-related PR) is merged:
+  - rules: pull_request (required_approving_review_count=1, require_code_owner_review=true, required_review_thread_resolution=true, dismiss_stale_reviews_on_push=false, require_last_push_approval=false, allowed_merge_methods=[merge,squash,rebase]), required_linear_history, deletion, non_fast_forward
+  - bypass_actors: [] (none)
+  - conditions.ref_name.include: ["refs/heads/main"]
+- Searched all issues via the search API (repo:Thika-Management-Dz/clinic-saas+is:issue) → total_count=0. No Dependency Dashboard issue created yet.
+- Inspected check-suites and check-runs on the latest commit (bcb8776) → 0 / 0. Renovate had not yet executed a scan on this repo.
+- Timeline: PR #2 (the most recent repo activity) merged at 2026-07-06T15:10:46Z; at the time of this check, current UTC time was 2026-07-06T15:33:56Z → only ~23 minutes since last repo activity. Operator reported Renovate install "just" completed. Renovate's first repository-scan cycle typically fires 10–60 minutes after install, so this delay was expected.
+- Did NOT poll in a tight loop (per task instructions). Did NOT open a no-op PR to nudge Renovate. Did NOT modify the ruleset (no merge to perform this session).
+- Did NOT proceed to Roadmap Phase 1, Phase 3, or any code generation, per the operator's explicit scope.
+
+Stage Summary:
+- Renovate install: VERIFIED HEALTHY. Org-level install id 144789075, scoped to Thika-Management-Dz/clinic-saas.
+- Onboarding PR status: NOT YET OPENED. Expected — install was ~25 min ago, Renovate's first scan cycle hadn't fired yet. Additionally, because .github/renovate.json5 already exists, Renovate may skip the onboarding PR entirely and create only the Dependency Dashboard issue on its first run.
+- Dependency Dashboard issue: NOT YET CREATED (will appear after Renovate's first run completes).
+- main-protection ruleset state: UNCHANGED this session. Still at full strictness (1 approval + code-owner review + thread resolution, linear history, no bypass actors). No relax/restore was needed because no merge was performed.
+- Open follow-ups for the next session: re-check PRs and issues after ~1 hour; if neither appears after 2 hours, verify install and consider manual trigger via Mend developer dashboard.
+- SECURITY: The operator shared a GitHub PAT (scopes: admin:org, repo, workflow) in chat. The operator should rotate it at https://github.com/settings/tokens after this session.
+
+---
+
+Task ID: 7 (continuation)
+Agent: Super Z (Renovate onboarding verification — session 2)
+Task: After operator manually triggered a Renovate run via the Mend developer dashboard, re-check whether the onboarding PR and/or Dependency Dashboard issue appeared, and complete the onboarding verification flow.
+
+Work Log:
+- Re-checked GET /repos/Thika-Management-Dz/clinic-saas/pulls?state=open → 0 open PRs. No "Configure Renovate" onboarding PR was opened (this is the expected outcome when the repo already has a valid Renovate config).
+- Searched issues via GET /search/issues?q=repo:Thika-Management-Dz/clinic-saas+is:issue → 1 issue found.
+- Issue #3 "Dependency Dashboard", author renovate[bot], state=open, created 2026-07-06T15:48:38Z (~7 min after operator's manual trigger), 0 comments. URL: https://github.com/Thika-Management-Dz/clinic-saas/issues/3
+- Body confirms Renovate completed its scan: "This repository currently has no open or pending branches" and "Detected Dependencies: None detected." Both correct — repo currently contains only docs/governance files; no package manifests yet.
+- Re-verified org install via GET /orgs/Thika-Management-Dz/installations → renovate app still listed (id 144789075).
+- Did NOT need to perform the relax-ruleset / SQUASH merge / restore-ruleset workflow because no onboarding PR was opened. main-protection ruleset (id 18567129) was NOT modified this session — still at full strictness.
+- Did NOT proceed to Roadmap Phase 1 or Phase 3 or any code generation, per operator's explicit scope.
+
+Stage Summary:
+- Renovate onboarding: COMPLETE. No onboarding PR was needed because .github/renovate.json5 was already present on main. Renovate discovered it, ran with the existing config, and created the Dependency Dashboard issue (#3) instead.
+- Dependency Dashboard issue #3: OPEN, healthy, maintained by renovate[bot]. Will auto-update as Renovate detects dependency updates in future scans.
+- Org install: verified intact (id 144789075, scoped to clinic-saas).
+- main-protection ruleset: UNCHANGED. Full strictness preserved.
+- Remaining follow-up: none for this task. Renovate will begin proposing real dependency PRs once Phase 3 (Monorepo Scaffold) introduces package manifests.
+- SECURITY REMINDER (carried forward): The operator's GitHub PAT should be rotated at https://github.com/settings/tokens.
+
+---
+
+Task ID: 8
+Agent: Super Z (Phase 1 prep draft)
+Task: Draft Phase 1 prep artifacts (setup-workstation.sh, verify-workstation.sh, .env.example, README) as deliverables for operator review. NOT yet committed to repo — these were drafts in the agent's local sandbox. Also answer operator's question about whether VS Code extensions are needed in the AI agent sandbox.
+
+Work Log:
+- Read AGENTS.md (286 lines) to confirm conventions: branch naming is agent/<task-id>-<short-desc> for AI work, Conventional Commits required, build commands are pnpm-based, self-verification is pnpm lint && pnpm typecheck && pnpm test.
+- Re-read Roadmap v2.1 Phase 1 (lines 487-636) to capture exact pinned versions: Node 24.18.0, pnpm 11.10.0, nvm 0.40.1, Vercel 54.20.1, Sentry CLI 2.45.0, Doppler >= 0.5.10, gh >= 2.65, Docker >= 27, Git >= 2.45.
+- Re-read Roadmap v2.1 Phase 3 (lines 822-1015) to understand what setup-workstation.sh should detect for "Phase 3 readiness" (presence of pnpm-workspace.yaml).
+- Confirmed .gitignore on main already blocks .env, .env.local, .env.*.local — so .env.example (ends in .example, not .env*) is the only env file safe to commit.
+- Confirmed no scripts/ directory exists on main yet.
+- Answered operator's VS Code question: NO, the AI agent does not need VS Code or its extensions in the sandbox. All six extensions from Roadmap §1.5 (eslint, prettier, tailwind, prisma, playwright, github-pr) are editor UIs for tools that already run fine from the CLI in a headless sandbox. §1.5 is human-developer-only.
+- Drafted scripts/setup-workstation.sh: idempotent installer implementing Roadmap §1.1 (Node via nvm), §1.2 (pnpm via Corepack), §1.3 (Git config defaults), §1.4 (Docker verify-only), §1.6 (Vercel/Sentry/Wrangler/Doppler/gh CLIs). Skips §1.5 (VS Code). Replaces §1.7 (browser-based login) with token-based env-var auth.
+- Drafted scripts/verify-workstation.sh: lightweight checker for session-start use. Three tiers: req_exact, req_min, opt_min. Checks workspace readiness.
+- Drafted .env.example: phase-tagged template. Every env var annotated with the Roadmap phase that introduces it. SECURITY banner at top.
+- Drafted README.md: operator review doc with open questions.
+- Syntax-checked both bash scripts with bash -n — both pass.
+- Did NOT commit anything to the repo. Did NOT open a PR. Did NOT touch the main-protection ruleset.
+
+Stage Summary:
+- Four draft artifacts produced (later committed to the repo in Task ID 9 — see below).
+- VS Code question answered: NO, agent sandbox does not need VS Code or its extensions.
+- Open questions for operator: devcontainer.json (defer), sigstore/gitsign (skip), token rotation runbook (suggested).
+- Next step on operator approval: open Phase 1 PR. (Completed in Task ID 9.)
+
+---
+
+Task ID: 8 (continuation — VS Code removal + handoff prompt)
+Agent: Super Z (Phase 1 prep draft, session 2)
+Task: Remove VS Code mentions from all draft files; inventory all VS Code mentions in the committed repo; prepare a complete handoff prompt for the next AI session.
+
+Work Log:
+- Inventoried VS Code mentions in draft files: found 6 mentions across README.md (4) and setup-workstation.sh (2). .env.example and verify-workstation.sh were clean.
+- Inventoried VS Code mentions in committed repo via direct grep of fetched files (GitHub code search returned 0 matches due to indexing limitations — direct grep was more reliable):
+  - docs/roadmap-v2.1.md: §1.5 "Install VS Code and the Extension Pack" (lines 554-569), plus code --version # 1.95+ line in the Phase 1 verification block.
+  - .gitignore: three lines — .vscode/*, !.vscode/extensions.json, !.vscode/settings.json (defensive patterns, not endorsements).
+  - All other files clean: AGENTS.md, docs/blueprint-v2.0.md, docs/dpia.md, docs/domain/glossary.md, docs/conventions/{testing,i18n,rtl,naming}.md, .github/{CODEOWNERS,PULL_REQUEST_TEMPLATE.md}, README.md, CONTRIBUTING.md, all 10 ADRs, all 4 runbooks.
+  - Roadmap line 1594 (~/.cache/ms-playwright) is the Playwright browser binary cache path used in CI — NOT a VS Code reference. Must stay.
+- Updated scripts/setup-workstation.sh: rewrote the header comment block to remove the §1.5 skip explanation.
+- Updated README.md: removed VS Code item from "What's not included", removed VS Code question from "Open questions".
+- Verified all draft files are 100% clean of editor mentions.
+- Wrote a self-contained handoff prompt for the next AI session.
+- Did NOT commit anything to the repo. Did NOT open a PR.
+
+Stage Summary:
+- All four draft files are 100% free of editor mentions.
+- Complete inventory of editor mentions in the committed repo prepared: only docs/roadmap-v2.1.md (§1.5 + verification block) and .gitignore (.vscode/ patterns) need edits.
+- Handoff prompt written (later updated in Task ID 9 and Task ID 9-continuation to reflect that the PR was already opened).
+
+---
+
+Task ID: 9
+Agent: Super Z (Phase 1 PR — open + review)
+Task: Operator pointed out that the previous handoff plan was broken — the next AI session cannot see the agent's local sandbox, so it could not have created the PR from the draft files. Fix: open the Phase 1 PR NOW from this session, post the AI review comment, and update the handoff prompt so the next session's job becomes "merge PR #4" instead of "create the PR from files you can't see."
+
+Work Log:
+- Acknowledged the operator's correct observation: the previous handoff prompt told the next session to add files from a sandbox-local path that the next session cannot see.
+- Cloned the repo, created branch agent/9-phase1-workstation-setup from main (sha bcb8776).
+- Edited docs/roadmap-v2.1.md:
+  - Removed the entire §1.5 "Install VS Code and the Extension Pack" section (header + substeps 1.5.1, 1.5.2, 1.5.3).
+  - Removed the code --version # 1.95+ line from the Phase 1 verification block.
+  - Renumbered §1.6 (Install Infrastructure CLIs) → §1.5, with substeps 1.6.x → 1.5.x.
+  - Renumbered §1.7 (Authenticate All CLIs) → §1.6.
+  - Rewrote the new §1.6 to describe token-based env-var auth (instead of browser-based login flows) with cross-references to .env.example and the new setup scripts.
+- Edited .gitignore: removed the three defensive .vscode/ patterns per the operator's instruction. Kept .idea/.
+- Copied the three draft files into the repo: scripts/setup-workstation.sh (chmod +x), scripts/verify-workstation.sh (chmod +x), .env.example (repo root).
+- Wrote docs/runbooks/workstation-setup.md — runbook in the same style as the existing ai-agent-pr-review.md runbook.
+- Verified both bash scripts pass bash -n syntax validation.
+- Ran a final repo-wide grep for editor mentions: zero matches (excluding the ms-playwright CI cache path on roadmap line ~1575, which correctly stays).
+- Created two commits with Conventional Commits messages:
+  - Commit 1 (fcceb0b): docs: remove editor-installation section from Phase 1 (AI-agent-only workflow) — 2 files changed, 16 insertions, 38 deletions.
+  - Commit 2 (8b0035a): feat: add Phase 1 workstation setup scripts (headless AI-agent profile) — 4 files changed, 736 insertions.
+- Pushed branch agent/9-phase1-workstation-setup to origin.
+- Opened PR #4 via POST /repos/.../pulls with full PR body. PR URL: https://github.com/Thika-Management-Dz/clinic-saas/pull/4
+- Posted AI Agent Review Session comment on PR #4 (comment id 4895241016). Comment includes the full checklist table (9 items, all PASS), judgment calls noted for operator veto, and outcome: PASS.
+- Did NOT merge the PR — left it open for the next session to merge via the relax-ruleset workflow.
+- Did NOT touch the main-protection ruleset — no merge was performed this session.
+- Updated the handoff prompt so the next session's task is "merge PR #4" (Task ID 10) instead of "create the PR."
+
+Stage Summary:
+- PR #4 is OPEN and ready to merge: https://github.com/Thika-Management-Dz/clinic-saas/pull/4
+  - Branch: agent/9-phase1-workstation-setup (2 commits, sha 8b0035a)
+  - Files: 6 total (2 edited: roadmap-v2.1.md, .gitignore; 4 new: setup-workstation.sh, verify-workstation.sh, .env.example, workstation-setup.md)
+  - AI Agent Review Session: PASS (comment posted, id 4895241016)
+  - mergeable: true / mergeable_state: blocked (expected — ruleset requires 1 approval)
+- main-protection ruleset: UNCHANGED. Full strictness preserved (1 approval + code-owner + thread resolution). No relax/restore cycle was needed.
+- Repo-wide editor-mention grep: ZERO matches (excluding the ms-playwright CI cache path, which correctly stays).
+- The next session's task (Task ID 10): merge PR #4 via the relax-ruleset workflow, verify the ruleset restore, verify the merge landed on main, verify the branch was deleted, run the final editor-mention grep.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) is still in chat history. Not yet rotated. Rotate at https://github.com/settings/tokens.
+
+---
+
+Task ID: 9 (continuation — WORKLOG.md added to repo)
+Agent: Super Z (Phase 1 PR — open + review, session 2)
+Task: Operator pointed out a second gap: the shared worklog at the sandbox-local path is also invisible to the next session. Everything the next session needs to read must be in the repo. Fix: add WORKLOG.md to the repo as a third commit on PR #4's branch, containing all worklog entries from this session (cleaned up for repo context). Update the handoff prompt to reference WORKLOG.md in the repo.
+
+Work Log:
+- Acknowledged the operator's second correct observation: the worklog was also sandbox-local. The next session can neither read it nor append to it.
+- Created WORKLOG.md at the repo root with all worklog entries from this session (Tasks 7, 7-continuation, 8, 8-continuation, 9, 9-continuation), cleaned up for repo context: replaced sandbox paths with repo-relative references, removed sandbox-internal details.
+- Added a header to WORKLOG.md explaining the convention: append at bottom, each entry starts with ---, includes Task ID / Agent / Task / Work Log / Stage Summary.
+- Committed WORKLOG.md as a third commit on the agent/9-phase1-workstation-setup branch (the PR #4 branch). This means PR #4 now has 3 commits:
+  1. docs: remove editor-installation section from Phase 1
+  2. feat: add Phase 1 workstation setup scripts (headless AI-agent profile)
+  3. docs: add shared multi-agent worklog (WORKLOG.md)
+- Pushed to update PR #4.
+- Updated the handoff prompt to reference WORKLOG.md in the repo instead of the sandbox path. The next session reads WORKLOG.md from the repo, and appends its own entry by opening a tiny docs-only PR (or batching it with the next substantive PR).
+
+Stage Summary:
+- WORKLOG.md is now in the repo (on the PR #4 branch, not yet merged to main). Once PR #4 merges, WORKLOG.md will be on main and visible to all future sessions.
+- PR #4 now has 3 commits (was 2). The AI Agent Review Session PASS comment (id 4895241016) still applies — the third commit is docs-only (a new markdown file), no code, no PII, no schema impact.
+- The next session (Task ID 10) will: merge PR #4 (which brings WORKLOG.md to main), then append its own Task ID 10 entry to WORKLOG.md via a tiny follow-up PR or batched with the next substantive work.
+- main-protection ruleset: UNCHANGED. Full strictness preserved.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT should be rotated at https://github.com/settings/tokens.
