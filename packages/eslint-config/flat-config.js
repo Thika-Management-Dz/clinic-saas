@@ -9,27 +9,29 @@
 //   - @eslint/js recommended
 //   - typescript-eslint recommendedTypeChecked
 //   - eslint-plugin-import-x (fork of eslint-plugin-import that supports
-//     ESLint 10; provides no-internal-modules, no-cycle, import/order)
+//     ESLint 10; provides no-cycle, import/order)
 //   - no-restricted-imports pattern (@clinic-saas/*/src/** — Blueprint §7.4
-//     primary enforcement; see rule comment below for why no-internal-modules
-//     alone is insufficient)
+//     enforcement; see rule comment below for why this is the sole mechanism)
 //   - eslint-import-resolver-typescript (TypeScript-aware resolver; required
 //     for the import plugin rules to fire on .ts files)
 //   - @next/eslint-plugin-next rules (when { next: true })
 //   - globals (browser + node as appropriate)
 //   - ignores (.next/**, dist/**, coverage/**, node_modules/**)
 //
-// The `import/no-internal-modules` rule enforces Blueprint §7.4: a NestJS
-// module may import ONLY another module's public API (exported via
-// `index.ts` or whatever paths the package's `exports` field declares).
-// Importing another module's internal services is a lint error.
+// Blueprint §7.4 enforcement: `no-restricted-imports` with pattern
+// `@clinic-saas/*/src/**` (and `@clinic-saas/*/src`) is the SOLE enforcement
+// of "no cross-module internal imports". A NestJS module may import ONLY
+// another module's public API (exported via `index.ts` or whatever paths the
+// package's `exports` field declares, e.g. `./schema`, `./styles/*`).
 //
-// IMPORTANT: this rule ONLY fires when a TypeScript-aware import resolver
-// is configured (see the `import/resolver` settings below). Without the
-// resolver, eslint-plugin-import's default Node resolver cannot resolve
-// `.ts` files or honor the `exports` field of workspace packages, and the
-// rule silently skips every check. This was the root cause of Task 13
-// BLOCK-1 (PR #8's review incorrectly claimed the rule worked).
+// The `import/no-internal-modules` rule was REMOVED in Task 16. It was kept
+// in PR #10 (Task 13) as "defense-in-depth", but a fresh-context review
+// (Task 16) found that the rule's `allow: ['**/src/index.ts']` pattern
+// blocks legitimate declared subpaths like `@clinic-saas/db/schema` (which
+// resolves to `packages/db/src/schema/index.ts` — does NOT match the allow
+// pattern because it ends with `/schema/index.ts`, not `/src/index.ts`).
+// See the rule comment below and the Task 16 review comment on PR #10 for
+// the full analysis.
 //
 // NestJS-specific plugin rules are NOT included in this scaffold. The
 // official @nestjs/eslint-plugin does not exist on npm; the community
@@ -109,27 +111,29 @@ export async function createConfig(opts = {}) {
         // plus declared subpaths like `./schema`, `./styles/*`) may be
         // imported across package boundaries.
         //
-        // The `import/no-internal-modules` rule is kept for defense-in-depth
-        // (it can catch some cases the patterns below miss, when the resolver
-        // resolves a path that the package's `exports` field doesn't allow).
-        // However, it does NOT reliably fire on workspace packages because
-        // modern resolvers (including eslint-import-resolver-typescript) honor
-        // the `exports` field and refuse to resolve non-exported subpaths —
-        // when resolution fails, the rule's exception handler silently allows
-        // the import. This was Task 13 BLOCK-1.
+        // PRIMARY enforcement: `no-restricted-imports` with pattern
+        // `@clinic-saas/*/src/**` (and `@clinic-saas/*/src`), which directly
+        // blocks any import that reaches into a workspace package's `src/`
+        // directory. Imports must go through the package's declared `exports`
+        // (e.g. `@clinic-saas/db`, `@clinic-saas/db/schema`,
+        // `@clinic-saas/ui`, `@clinic-saas/ui/styles/globals.css`).
         //
-        // The PRIMARY enforcement is therefore `no-restricted-imports` with
-        // pattern `@clinic-saas/*/src/**`, which directly blocks any import
-        // that reaches into a workspace package's `src/` directory. Imports
-        // must go through the package's declared `exports` (e.g.
-        // `@clinic-saas/db`, `@clinic-saas/db/schema`, `@clinic-saas/ui`,
-        // `@clinic-saas/ui/styles/globals.css`).
-        'import/no-internal-modules': [
-          'error',
-          {
-            allow: ['**/src/index.ts'],
-          },
-        ],
+        // The `import/no-internal-modules` rule was REMOVED in Task 16.
+        // PR #10 (Task 13) kept it as "defense-in-depth" with an `allow`
+        // pattern of `['**/src/index.ts']`, but a fresh-context review
+        // (Task 16) found that the rule BLOCKS legitimate declared subpaths:
+        //   - `@clinic-saas/db/schema` resolves to `packages/db/src/schema/index.ts`
+        //     which does NOT match `**/src/index.ts` (ends with `/schema/index.ts`).
+        //   - `@clinic-saas/ui/styles/globals.css` resolves to `packages/ui/src/styles/globals.css`
+        //     which also does NOT match.
+        // Both are declared in their package's `exports` field and are
+        // legitimate public APIs per Blueprint §7.4. The rule would have
+        // blocked Phase 4's `import { schema } from '@clinic-saas/db/schema'`
+        // in apps/api. The `no-restricted-imports` pattern above is sufficient
+        // and correct — it blocks `/src/` subpaths syntactically without
+        // depending on resolver behavior, and does not block declared
+        // subpaths. See Issue #13 (Task 15) and the Task 16 review comment
+        // on PR #10 for the full analysis.
         'no-restricted-imports': [
           'error',
           {
