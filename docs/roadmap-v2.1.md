@@ -551,51 +551,33 @@ from Docker!').
 → Resources). Insufficient resources cause Postgres and Orthanc to crash
 under parity-test load.
 
-1.5 — Install VS Code and the Extension Pack
+1.5 — Install Infrastructure CLIs
 
-1.5.1 Install VS Code: macOS (brew install --cask visual-studio-code),
-Windows (winget install Microsoft.VisualStudioCode), Linux (download
-.deb from code.visualstudio.com).
-
-1.5.2 Install the required extension pack from the command line: code
---install-extension dbaeumer.vscode-eslint && code --install-extension
-esbenp.prettier-vscode && code --install-extension
-bradlc.vscode-tailwindcss && code --install-extension prisma.prisma &&
-code --install-extension ms-playwright.playwright && code
---install-extension GitHub.vscode-pull-request-github. (The operator may
-add their chosen AI coding tool's VS Code extension separately.)
-
-1.5.3 Confirm Tailwind CSS v4 IntelliSense by opening any .css file
-containing @import "tailwindcss"; hover a utility class — a tooltip must
-appear.
-
-1.6 — Install Infrastructure CLIs
-
-1.6.1 Install Vercel CLI: npm install -g vercel@54.20.1. Verify: vercel
+1.5.1 Install Vercel CLI: npm install -g vercel@54.20.1. Verify: vercel
 --version.
 
-1.6.2 Install Doppler CLI: macOS (brew install
+1.5.2 Install Doppler CLI: macOS (brew install
 dopplerhq/doppler/doppler), Linux (curl -Ls
 https://git.io/install-doppler | sh), Windows (scoop install doppler).
 Verify: doppler --version (expect 0.5.10+).
 
-1.6.3 Install Cloudflare CLI (wrangler): npm install -g wrangler@latest.
-Verify: wrangler --version. Authenticate with a free Cloudflare account:
-wrangler login.
+1.5.3 Install Cloudflare CLI (wrangler): npm install -g wrangler@latest.
+Verify: wrangler --version.
 
-1.6.4 Install Sentry CLI: npm install -g @sentry/cli@2.45.0. Verify:
+1.5.4 Install Sentry CLI: npm install -g @sentry/cli@2.45.0. Verify:
 sentry-cli --version.
 
-1.7 — Authenticate All CLIs
+1.6 — Authenticate All CLIs
 
-1.7.1 Vercel: vercel login — authenticate via GitHub. Verify: vercel
-whoami.
-
-1.7.2 Doppler: doppler login — open browser, approve. Create a workplace
-project named clinic-saas. Verify: doppler me.
-
-1.7.3 Cloudflare: wrangler login — open browser, approve. Verify:
-wrangler whoami.
+The project's AI-agent workflow runs in headless sandboxes where
+browser-based `vercel login` / `doppler login` / `wrangler login` flows
+are impossible. Instead, authenticate via tokens stored in .env.local
+(see .env.example for the full list and where each token comes from).
+The CLIs read their tokens from environment variables natively:
+VERCEL_TOKEN, DOPPLER_TOKEN, CLOUDFLARE_API_TOKEN, SENTRY_AUTH_TOKEN,
+GH_TOKEN. The scripts/setup-workstation.sh and scripts/verify-
+workstation.sh scripts (added in this phase) encode this headless
+profile idempotently.
 
 Phase 1 — Verification
 
@@ -607,7 +589,6 @@ If any fails, re-do the relevant step before proceeding.
   pnpm --version # 11.10.0
   git --version # git version 2.45+
   docker --version # Docker version 27+
-  code --version # 1.95+
   gh --version # gh version 2.65+
   vercel --version # 54.20.1
   doppler --version # v0.5.10+
