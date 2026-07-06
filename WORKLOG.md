@@ -537,3 +537,53 @@ Stage Summary:
 - main-protection ruleset: UNCHANGED at session start (verified at full strictness). Will be relaxed only for this PR's squash-merge, then immediately restored. Verification GET will follow.
 - SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) was shared in chat for this session. Rotate at https://github.com/settings/tokens after the session ends.
 - Scope boundary respected: did NOT proceed to Roadmap Phase 6 (RTL/i18n Scaffold) full scope (no next-intl wiring, no locale routing, no RTL audit of apps/web). Only the 13 shadcn components were pulled forward — that's complete.
+
+---
+
+Task ID: 15
+Agent: Super Z (Critical review of Task 14 — fresh-context reviewer)
+Task: Per ADR-010, a fresh AI agent session reviews the Task 14 judgment-call decisions (17 JCs across PRs #6, #7, #8, #9). The previous session self-reviewed because no second session was available. This session is the fresh-context reviewer. For each JC, independently reassess ACCEPT/DEFER/RESOLVED/CHANGE; open a GitHub issue with findings; open fix PRs for any disagreements that warrant immediate fixes; append this worklog entry.
+
+Work Log:
+- Read AGENTS.md end-to-end, docs/runbooks/ai-agent-pr-review.md (the 15-item review checklist), docs/adr/ADR-010.md (the ADR mandating fresh-context review).
+- Read WORKLOG.md Task 13 + Task 14 entries for the review context. Read Issue #11 (the Task 13 critical review) for the BLOCK-1 finding context.
+- Fetched the AI Agent Review Session comments on PRs #6, #7, #8, #9 via the GitHub API to read the original judgment calls in the author's own words. Verified the JC count: 3 (PR #6) + 3 (PR #7) + 5 (PR #8) + 6 (PR #9) = 17 total — no missed judgment calls.
+- Read PR #10's diff (git show 22ded85) and its AI Agent Review Session comment (comment id 4897176586) to verify the JC-9-3 RESOLVED decision.
+- Read the actual code files each JC refers to: scripts/setup-workstation.sh, scripts/verify-workstation.sh, packages/eslint-config/flat-config.js, pnpm-workspace.yaml, packages/ui/components.json, packages/ui/src/index.ts, packages/ui/package.json, packages/i18n/messages/ar-DZ/common.json, apps/web/app/page.tsx, apps/web/app/layout.tsx, packages/tsconfig/nestjs.json, apps/worker/src/main.ts, apps/api/src/main.ts, apps/api/src/app.module.ts, apps/worker/src/worker.module.ts, root package.json, packages/eslint-config/package.json.
+- Ran pnpm install && pnpm typecheck && pnpm lint && pnpm build at main tip c6052fd — all four exit 0 (8/8 typecheck, 8/8 lint, 3/3 build).
+- For each of the 17 JCs, independently applied the test: "Was the Task 14 decision correct? Was the reasoning sound at the time? Has the trade-off shifted since? Is there a clearly better alternative?"
+
+Decisions (17 judgment calls total, independently reassessed):
+
+| JC-ID | Task 14 decision | My decision | Agreement | Note (1-2 sentences) |
+|-------|------------------|-------------|-----------|----------------------|
+| JC-6-1 | ACCEPT | ACCEPT | YES | Destructive .npmrc edit is minimal (one line, other lines preserved) and documented in 3 places. Fail-fast would block the common AI-agent-sandbox case with no recovery path. |
+| JC-6-2 | ACCEPT | ACCEPT | YES | sed runs BEFORE nvm install (cleaner log); nvm use --delete-prefix would couple the fix to nvm's flag surface. |
+| JC-6-3 | DEFER → Phase 8 | DEFER → Phase 8 | YES | Phase 1 has no test framework; deferral was justified at the time. (Task 17-a separately pulled this forward and RESOLVED it.) |
+| JC-7-1 | ACCEPT | ACCEPT | YES | .gitkeep files would need cleanup in subsequent PRs. Workspace globs handle the empty case gracefully. |
+| JC-7-2 | ACCEPT | ACCEPT | YES | Standard monorepo practice. Lockfile enables deterministic installs + Renovate tracking. |
+| JC-7-3 | ACCEPT | ACCEPT | YES | Roadmap §3.1.2 explicitly lists the db:* scripts. Failure mode (clear "no projects matched") is acceptable. |
+| JC-8-1 | DEFER → Phase 6 | DEFER → Phase 6 | YES | Components wire to the design system that lands in Phase 6; adding now would bloat the diff and require RTL re-audit. (Task 17-b separately pulled this forward and RESOLVED it.) |
+| JC-8-2 | ACCEPT | ACCEPT | YES | Official @nestjs/eslint-plugin doesn't exist on npm. Base tseslint recommendedTypeChecked covers the important surface. Flag reserved for future use. |
+| JC-8-3 | ACCEPT | ACCEPT | YES | 8 generic UI labels (appName, loading, save, etc.) are a working seed, not real implementation. Namespaced under common.* per AGENTS.md. |
+| JC-8-4 | ACCEPT | ACCEPT | YES | Next.js 16 requires React 19. React 18 would conflict with Next.js 16 peerDeps. |
+| JC-8-5 | ACCEPT | ACCEPT | YES | Task 13 NIT-1 confirmed allowBuilds alone is sufficient; onlyBuiltDependencies is silently ignored. Redundancy is harmless. |
+| JC-9-1 | ACCEPT | ACCEPT | YES | No text is correct per AGENTS.md Do-NOT #4. Styled placeholder proves the CSS pipeline works. |
+| JC-9-2 | ACCEPT | ACCEPT | YES | verbatimModuleSyntax is ESM-only; forcing it on CommonJS (NestJS default) produces TS1295 errors. Pragmatic per-framework override. |
+| JC-9-3 | RESOLVED (PR #10) | RESOLVED (PR #10) | YES | Verified: PR #10 re-enabled import/order as a warning (flat-config.js lines 151-158); pnpm lint passes with 0 warnings. Resolution confirmed. |
+| JC-9-4 | ACCEPT | ACCEPT | YES | Root eslint.config.mjs as fallback is a standard ESLint 9+ pattern. Per-package configs would be more files for marginal benefit. |
+| JC-9-5 | ACCEPT | ACCEPT | YES | eslint-config package is configuration, not code. Correctness verified by the workspace's pnpm lint. |
+| JC-9-6 | ACCEPT | ACCEPT | YES | Worker HTTP server on 3002 is useful for k8s liveness probes + API consistency. Fastify is lightweight. |
+
+Summary:
+- AGREE: 17 (all 17 Task 14 decisions confirmed)
+- DISAGREE: 0
+- Fix PRs opened by Task 15: 0 (a clean review is a valid outcome)
+
+Cross-reference: Task 16 (fresh-context re-review of PR #10 itself, separate from this Task 15 review of Task 14's JC decisions) found 1 BLOCK in PR #10's diff: the import/no-internal-modules rule blocked legitimate declared subpaths like @clinic-saas/db/schema. This is NOT a Task 14 JC issue (Task 14 did not flag this as a JC because the previous session's self-review claimed it worked). The Task 16 BLOCK was addressed in PR #14 (remove no-internal-modules rule). Task 17-a (PR #15) pulled JC-6-3 forward and RESOLVED it with bash tests. Task 17-b (PR #16) pulled JC-8-1 forward and RESOLVED it with the 13 shadcn components.
+
+Stage Summary:
+- Task 15 deliverable: GitHub issue #13 (https://github.com/Thika-Management-Dz/clinic-saas/issues/13) with the full critical review, 0 disagreements, 0 fix PRs.
+- main-protection ruleset: UNCHANGED in this task (no PRs merged by Task 15 itself). Still at full strictness (1 approval + code-owner + thread resolution, no bypass actors, enforcement active) — verified at session start and after each subsequent Task 16/17 PR merge.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) was shared in chat for this session. Rotate at https://github.com/settings/tokens after the session ends.
+- Scope boundary respected: did NOT proceed to Roadmap Phase 4 or any business logic. Task 15 scope was the 17 JC reassessments only — that's complete.
