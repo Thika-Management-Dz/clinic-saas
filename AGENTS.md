@@ -223,6 +223,27 @@ pnpm lint && pnpm typecheck && pnpm test
 - Leave a `// REVIEW: <question>` comment rather than guessing silently.
 - Never disable RLS, audit logging, or soft deletes to make a test pass.
 
+### Being reviewed (AI agent review session)
+
+After your PR is opened, the operator runs a **separate** AI agent review
+session against your diff. This replaces the always-on AI PR review bot from
+Roadmap §2.6 (superseded by [ADR-010](./docs/adr/ADR-010.md)). The review
+session enforces the same rules listed in this file and in
+[`docs/runbooks/ai-agent-pr-review.md`](./docs/runbooks/ai-agent-pr-review.md).
+
+What this means for you as the author agent:
+
+- Expect a PR comment from the operator with a findings table
+  (`PASS` / `BLOCK` / `NIT` / `N/A` per rule) and a verdict
+  (`MERGE-READY` / `FIX-NEEDED`).
+- If the comment lists `BLOCK` findings, address them on the same branch, push,
+  and the operator will re-run the session. Do not argue with the review in
+  comments — fix the code or leave a `// REVIEW:` comment explaining why the
+  finding is a false positive.
+- Do not self-approve. The review session is a fresh-context pass; your own
+  self-verification (above) is a first line of defense, not a substitute.
+- The review comment is part of the audit trail — do not request its deletion.
+
 ## Domain Glossary
 
 See [`docs/domain/glossary.md`](./docs/domain/glossary.md) for the trilingual
@@ -239,6 +260,9 @@ RC (السجل التجاري / RC).
 
 See [`docs/adr/`](./docs/adr/). Decisions are Accepted unless noted. Any new
 architecture decision requires a new ADR (next number) before implementation.
+Notable: [ADR-010](./docs/adr/ADR-010.md) supersedes Roadmap §2.6 — the project
+uses a manual AI agent review session per PR instead of an always-on AI PR
+review bot.
 
 ## Runbooks
 
@@ -248,6 +272,9 @@ architecture decision requires a new ADR (next number) before implementation.
   pgBackRest restore, 3-2-1-1-0.
 - [`docs/runbooks/dexie-to-powersync-migration.md`](./docs/runbooks/dexie-to-powersync-migration.md)
   — v1 → v2 sync migration.
+- [`docs/runbooks/ai-agent-pr-review.md`](./docs/runbooks/ai-agent-pr-review.md)
+  — how to run an AI agent review session on a PR (replaces the review bot per
+  ADR-010).
 
 ## Worker / Offline App Notes
 
