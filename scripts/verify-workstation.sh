@@ -90,7 +90,7 @@ echo "=== clinic-saas workstation verification ==="
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1 || true
 
-req_exact "node"       "$NODE_VERSION"      "$(node --version 2>/dev/null || echo MISSING)"
+req_exact "node"       "v$NODE_VERSION"     "$(node --version 2>/dev/null || echo MISSING)"
 req_exact "pnpm"       "$PNPM_VERSION"      "$(pnpm --version 2>/dev/null || echo MISSING)"
 req_min   "git"        "$GIT_MIN_VERSION"   "$(git --version 2>/dev/null | awk '{print $3}' || echo MISSING)"
 req_exact "vercel"     "$VERCEL_VERSION"    "$(vercel --version 2>/dev/null || echo MISSING)"
