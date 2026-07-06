@@ -1,3 +1,23 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  esbuild: true
+  sharp: true
+
+# pnpm 11+ reads settings from pnpm-workspace.yaml (not from package.json's
+# "pnpm" field, which is no longer read). See https://pnpm.io/settings.
+#
+# onlyBuiltDependencies: explicit allowlist of packages whose postinstall /
+# install build scripts are allowed to run. pnpm 11 blocks all build scripts
+# by default as a supply-chain hardening measure; these four are
+# well-known native-binary packages used by Next.js (@swc/core, sharp),
+# Drizzle Kit / Vite (esbuild), and NestJS file watching (@parcel/watcher).
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@swc/core'
+  - 'esbuild'
+  - 'sharp'

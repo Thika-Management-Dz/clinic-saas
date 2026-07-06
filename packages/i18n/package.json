@@ -1,0 +1,19 @@
+{
+  "name": "@clinic-saas/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next-intl": "^4.13.0"
+  },
+  "devDependencies": {
+    "@clinic-saas/tsconfig": "workspace:*",
+    "typescript": "^6.0.3"
+  }
+}
