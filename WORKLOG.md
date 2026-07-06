@@ -670,3 +670,95 @@ Stage Summary:
 - BLOCKER for PR C: agent sandbox has no Docker/Postgres. Cannot run db:migrate or Vitest tests. Awaiting operator's choice: (A) provide remote Neon Postgres URL, or (B) operator runs verification locally. PRs A + B are pure code (no DB needed); PRs C/D/E require a DB.
 - Next: PAUSE for operator's DB decision. Then PR C (generate + apply migration + FORCE RLS SQL), PR D (audit immutability SQL + seed), PR E (Vitest RLS + audit tests — compliance gate), PR F (Neon staging docs).
 - SECURITY REMINDER (carried forward): Operator's GitHub PAT (ghp_TwX...) was shared in chat. Rotate at https://github.com/settings/tokens after the session ends.
+
+---
+
+Task ID: 18-c
+Agent: Super Z (Phase 4 PR C — first migration + FORCE RLS)
+Task: Phase 4.4 — Generate + apply the first Drizzle migration. Add FORCE ROW LEVEL SECURITY (JC-18-3 remediation). Verify on Neon staging DB.
+
+Work Log:
+- Updated packages/db/drizzle.config.ts to read MIGRATION_DATABASE_URL (ops_superuser/neondb_owner, BYPASSRLS) with fallback to DATABASE_URL (app_role). Migrations must run as a role that can CREATE TABLE; the app connects as app_role at runtime.
+- Operator provided Neon free-tier Postgres 17 (region eu-central-1 Frankfurt). Connection: ep-holy-glade-asqt1jwl.c-4.eu-central-1.aws.neon.tech/neondb.
+- Bootstrapped Neon roles: created ops_superuser (BYPASSRLS) + app_role (NOBYPASSRLS). Neon rejected weak dev passwords (dev_password, dev_ops_password) — generated strong random passwords (24 chars, base64). Stored in /tmp/.env.neon (session-only, chmod 600, NOT committed).
+- Neon adaptation (JC-18-5): ops_superuser couldn't CREATE TABLE on Neon (missing schema CREATE privileges). neondb_owner (Neon's DB owner role, has BYPASSRLS) couldn't GRANT itself to ops_superuser (needs ADMIN option, Neon restricts). Solution: run migration as neondb_owner on Neon (equivalent for RLS — both have BYPASSRLS). On docker-compose, migrations run as ops_superuser as designed.
+- Generated migration via `pnpm --filter @clinic-saas/db db:generate --name initial`. Inspected SQL: 8 CREATE TABLE, 3 ALTER TABLE ENABLE ROW LEVEL SECURITY (app_user, user_role, audit_log), 0 FORCE ROW LEVEL SECURITY (Drizzle 0.40.1 limitation — JC-18-3), 3 CREATE POLICY with USING + WITH CHECK, 11 CREATE INDEX (3 partial with WHERE deleted_at IS NULL), 11 ALTER TABLE ADD FOREIGN KEY. Migration files: 0000_initial.sql + meta/0000_snapshot.json + meta/_journal.json.
+- Applied migration to Neon as neondb_owner: `MIGRATION_DATABASE_URL=<neon_owner_url> pnpm --filter @clinic-saas/db db:migrate`. All 8 tables created. Verified via pg_tables + pg_class queries: ENABLE RLS on 3 tenant-scoped tables, no FORCE RLS yet.
+- Created packages/db/sql/003_force_rls.sql: ALTER TABLE ... FORCE ROW LEVEL SECURITY for app_user, user_role, audit_log. Also includes belt-and-suspenders GRANT DML TO app_role + REVOKE TRUNCATE (in case ALTER DEFAULT PRIVILEGES didn't catch everything on Neon).
+- Applied 003_force_rls.sql to Neon (multi-statement via postgres.js unsafe). Verified: all 3 tenant-scoped tables now have relrowsecurity=true AND relforcerowsecurity=true. app_role has SELECT/INSERT/UPDATE on all tables, NO DELETE on audit_log, NO TRUNCATE.
+- RLS SMOKE TEST (6 tests, run via node script against Neon): (1) SELECT without current_tenant → 0 rows ✅, (2) INSERT with tenant A → succeeds ✅, (3) SELECT with tenant A → 1 row ✅, (4) SELECT with tenant B → 0 rows ✅ CROSS-TENANT ISOLATION, (5) INSERT with tenant_id=B under tenant A context → denied ✅ WITH CHECK, (6) audit_log has ENABLE+FORCE RLS ✅.
+- Pushed branch, opened PR #22. Ran AI agent review (15 checklist items + 10 Phase 4-specific RLS checks, all PASS). Merged via relax/restore (sha a636c6d). Ruleset restored + verified.
+
+Stage Summary:
+- PR #22 MERGED (sha a636c6d). Files: drizzle.config.ts (modified), migrations/0000_initial.sql + meta/ (new), sql/003_force_rls.sql (new).
+- All 3 tenant-scoped tables verified on Neon: ENABLE RLS + FORCE RLS + tenant_id index + tenant isolation policy. CROSS-TENANT ISOLATION PROVEN via smoke test.
+- JC-18-3 (no forceRLS() in Drizzle 0.40.1) REMEDIATED via 003_force_rls.sql.
+- JC-18-5 (Neon runs migrations as neondb_owner) documented — equivalent for RLS (both roles have BYPASSRLS).
+- Neon staging DB now has the full Phase 4 schema applied. Strong passwords generated for ops_superuser + app_role (in /tmp/.env.neon, operator must store in Doppler + rotate).
+
+---
+
+Task ID: 18-d
+Agent: Super Z (Phase 4 PR D — audit immutability + hash chain + seed)
+Task: Phase 4.5 — REVOKE UPDATE/DELETE on audit_log + PL/pgSQL hash-chain trigger + idempotent seed script.
+
+Work Log:
+- Created packages/db/sql/002_audit_log_immutable.sql: CREATE EXTENSION pgcrypto (for digest()), REVOKE UPDATE/DELETE ON audit_log FROM app_role + PUBLIC, compute_audit_hash_curr() PL/pgSQL function (SECURITY DEFINER, SET search_path=public — reads MAX(id) row's hash_curr, builds canonical JSON via jsonb_build_object, computes SHA-256(prev_hash || canonical_json)), audit_log_hash_chain BEFORE INSERT trigger.
+- Created packages/db/src/seed.ts: idempotent seed (ON CONFLICT DO NOTHING). 2 test clinics (fixed UUIDs 11111111... and 22222222...), 9 system roles (super_admin, clinic_admin, physician, dentist, dental_assistant, nurse, receptionist, billing, pharmacist), 8 role inheritance edges (clinic_admin inherits from all 7 staff roles; super_admin inherits from clinic_admin), 3 test users in Clinic A (clinic_admin, physician, receptionist) with user_role rows.
+- Added tsx + @types/node devDeps to packages/db/package.json. Added db:seed script. Added types:['node'] to packages/db/tsconfig.json.
+- Fixed TS errors: noUncheckedIndexedAccess on count query result (used single query with has_table_privilege + null check), removed unused randomUUID import.
+- Applied 002_audit_log_immutable.sql to Neon: pgcrypto enabled, function created, trigger created (tgenabled='O'). Ran seed: 2 clinics, 9 roles, 8 inheritance edges, 3 users, 3 user_roles.
+- AUDIT IMMUTABILITY SMOKE TEST (5 tests): (1) INSERT row 1 → succeeds, hash_curr computed (64 hex chars), hash_prev=null ✅, (2) INSERT row 2 → hash_prev == row 1 hash_curr (chain links) ✅, (3) UPDATE as app_role → denied (permission denied) ✅, (4) DELETE as app_role → denied (permission denied) ✅, (5) recompute SHA-256(prev_hash || canonical_json) in Postgres → matches stored hash_curr ✅.
+- Pushed branch, opened PR #23. Ran AI agent review (15 checklist + 7 audit-specific checks, all PASS). Merged via relax/restore (sha b13cc2d). Ruleset restored + verified.
+
+Stage Summary:
+- PR #23 MERGED (sha b13cc2d). Files: sql/002_audit_log_immutable.sql (new), src/seed.ts (new), package.json + tsconfig.json + pnpm-lock.yaml (modified).
+- audit_log is truly append-only: UPDATE/DELETE denied to app_role. Hash chain is intact and tamper-evident: any modification breaks the chain for all subsequent rows.
+- Seed provides deterministic test data (fixed UUIDs, idempotent re-runs).
+- pgcrypto extension required for digest() — documented in SQL file.
+
+---
+
+Task ID: 18-e
+Agent: Super Z (Phase 4 PR E — Vitest RLS + audit immutability tests)
+Task: Phase 4.6 — Write the CI tests for RLS and audit immutability. THE COMPLIANCE GATE. If any test fails, do NOT proceed to Phase 5.
+
+Work Log:
+- Added vitest ^2.1.0 devDep to packages/db/package.json. Added test (vitest run) + test:watch scripts. Used 'vitest run' not 'vitest' so it exits after run (turbo needs exit-0).
+- Created packages/db/src/__tests__/helpers.ts: connectAsApp() (app_role, NOBYPASSRLS), connectAsOwner() (ops_superuser/neondb_owner, BYPASSRLS), withTenant() (SET LOCAL app.current_tenant in a tx, auto-rollback), ensureTestClinic(), cleanupTestData(). Tests FAIL if DATABASE_URL unset (not skip — per testing conventions, RLS tests must run).
+- Created packages/db/src/__tests__/rls.test.ts: 13 tests across 5 describe blocks. RLS role config (2), RLS table config (2), cross-tenant isolation (4), no tenant context (1), privilege restrictions (4).
+- Created packages/db/src/__tests__/audit_log.test.ts: 6 tests across 2 describe blocks. Immutability (3: INSERT succeeds, UPDATE denied, DELETE denied). Hash chain (3: first row hash_prev=NULL, chain links, hash_curr matches recompute).
+- Fixed TS issues: withTenant generic cast (postgres.js UnwrapPromiseArray doesn't compose with generics — used `as T` with eslint-disable), noUncheckedIndexedAccess (explicit null checks with `if (!row) throw`), removed unused imports.
+- Hash chain recompute test: initially tried recomputing in JS (createHash from node:crypto), but PL/pgSQL uses to_char(timestamp, '...US"Z"') with microsecond precision while JS Date has millisecond precision — hash didn't match. Changed approach: recompute IN POSTGRES using the same jsonb_build_object + digest logic. The cross-language contract (JS canonicalJson() == PL/pgSQL jsonb) is Phase 8 per testing.md §3.1a.
+- Fixed CTE query bug: original used `FROM this_row, prev` (CROSS JOIN) which returned 0 rows when there was no previous row (first row in table). Changed to LEFT JOIN LATERAL ... ON true.
+- Ran all 19 tests against Neon: 19/19 PASS, 32s duration. All RLS tests pass (cross-tenant isolation, WITH CHECK, FORCE RLS, privilege restrictions). All audit tests pass (immutability, hash chain linking, hash recompute).
+- Pushed branch, opened PR #24. Ran AI agent review (15 checklist + 10 compliance gate checks G1-G10, all PASS). Merged via relax/restore (sha f45e8aa). Ruleset restored + verified.
+
+Stage Summary:
+- PR #24 MERGED (sha f45e8aa). Files: package.json (modified), __tests__/helpers.ts + rls.test.ts + audit_log.test.ts (new), pnpm-lock.yaml (modified).
+- COMPLIANCE GATE GREEN: 19/19 Vitest tests pass. This is the first real `pnpm test` run in the project (prior PRs had N/A for tests).
+- RLS cross-tenant isolation PROVEN by automated test (not just smoke test).
+- audit_log immutability + hash chain PROVEN by automated test.
+- Safe to proceed to Phase 5 (Authentication & Tenant Interceptor).
+
+---
+
+Task ID: 18-f
+Agent: Super Z (Phase 4 PR F — Neon staging docs + worklog)
+Task: Phase 4.7 — Document the Neon staging setup for the operator. The agent cannot perform the Neon/Doppler setup itself (requires operator's accounts), but documents the manual steps.
+
+Work Log:
+- Created docs/runbooks/neon-staging.md: documents what the agent did during Phase 4 (roles bootstrapped, migration applied, FORCE RLS, audit immutability, seed, tests pass) and what the operator must do (store credentials in Doppler, rotate the Neon password, verify staging parity).
+- Documents JC-18-5 (Neon runs migrations as neondb_owner, not ops_superuser — Neon restricts role privileges).
+- Documents the connection string reference (DATABASE_URL, MIGRATION_DATABASE_URL, DIRECT_URL_STAGING).
+- Documents how to reset the staging DB (drop schema, re-apply migration + FORCE RLS + audit + seed).
+- Reminds that production is NOT Neon (must be Algerian sovereign infrastructure per Law 18-07).
+- Appended worklog entries for Task 18-c, 18-d, 18-e, 18-f (this entry).
+
+Stage Summary:
+- Phase 4 COMPLETE. All 6 sub-sections (4.1-4.6) done. 4.7 documented for operator.
+- 6 PRs merged: #18 (docker-compose + roles), #20 (schema), #22 (migration + FORCE RLS), #23 (audit immutability + seed), #24 (Vitest tests), #25 (this docs PR).
+- 19/19 Vitest tests pass on Neon staging.
+- pnpm install + typecheck + lint + test:scripts all green. No regressions.
+- main-protection ruleset at full strictness (verified after every merge).
+- SECURITY: Operator's GitHub PAT (ghp_TwX...) + Neon DB password (npg_...) were shared in chat. Both must be rotated after this session.
