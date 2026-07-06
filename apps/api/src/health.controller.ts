@@ -4,6 +4,7 @@
 // Per Roadmap v2.1 §3.6.4: 'GET / must return a 200'.
 
 import { Controller, Get } from '@nestjs/common';
+
 import { HealthService, type HealthStatus } from './health.service.js';
 
 @Controller()

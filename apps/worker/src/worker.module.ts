@@ -14,8 +14,9 @@
 // Each queue processor emits domain events via EventEmitter2 (per
 // Blueprint §7.2) so the API can react without direct service calls.
 
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
+
 import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
 
