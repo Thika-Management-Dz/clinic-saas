@@ -216,3 +216,49 @@ Stage Summary:
 - No code, no schema, no env changes. No new files other than this worklog append.
 - SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) is still in chat history. Not yet rotated. Rotate at https://github.com/settings/tokens.
 - Scope boundary respected: did NOT proceed to Roadmap Phase 1 execution, Phase 3 monorepo scaffold, application code generation, or database schema work. Awaiting operator's direction on what's next.
+
+---
+
+Task ID: 11
+Agent: Super Z (Phase 1 validation — run setup-workstation.sh end-to-end)
+Task: Validate the Phase 1 workstation setup script by actually running it in a fresh sandbox. The script (scripts/setup-workstation.sh, commit 5a16261) had never been executed since it was authored in Task 9. The goal is to either confirm it works end-to-end or fix any bugs discovered, then merge the fix via the relax/restore workflow.
+
+Work Log:
+- Read WORKLOG.md (entries through Task 10), AGENTS.md, docs/runbooks/workstation-setup.md, scripts/setup-workstation.sh, scripts/verify-workstation.sh, and Roadmap v2.1 Phase 1 (§1.1-§1.6) and Phase 3 (§3.1-§3.11) sections.
+- Verified the sandbox state before running: bash 5.2.37, curl, git 2.47.3, system Node v24.16.0 (NOT the pinned 24.18.0), corepack 0.35.0, npm 11.13.0; pnpm, nvm, docker, vercel, sentry-cli, wrangler, gh, doppler all MISSING. ~/.npmrc contained `prefix=/home/z/.npm-global` (set by the sandbox for the agent-skills global modules: mermaid-cli, docx, pdf-lib, playwright, pptxgenjs, sharp). Network access to raw.githubusercontent.com and registry.npmjs.org confirmed.
+- Step 2 — ran `bash scripts/setup-workstation.sh` end-to-end. Result: exit code 11 after ~9 seconds. Root cause traced: `nvm use 24.18.0` (line 92 of the script) returned exit code 11 because `~/.npmrc` had `prefix=/home/z/.npm-global`, which is incompatible with nvm's per-Node-version isolation. nvm's own message ("Run `nvm use --delete-prefix v24.18.0` to unset it") was printed to stderr but the script's `set -euo pipefail` aborted the run ungracefully. nvm 0.40.1 and Node 24.18.0 itself were installed correctly before the abort (verified: `~/.nvm/versions/node/v24.18.0` populated, checksums matched).
+- Classification: (b) Script bug + (d) Documented behaviour. The .npmrc prefix is sandbox-specific, but the script's handling of the conflict is buggy — it dies with a cryptic nvm warning instead of detecting and resolving the conflict.
+- Inspected the nvm source (`~/.nvm/nvm.sh` lines 2723-2920) to understand `nvm_die_on_prefix` and the `--delete-prefix` flag. Confirmed: `nvm use --delete-prefix` is a valid flag for `nvm use` (line 3754 + 3772), it removes the `prefix=` and `globalconfig=` lines from all 4 npmrc locations (builtin, global, user, project) via `npm config --loglevel=warn delete prefix --userconfig=<file>`, and it preserves other .npmrc lines. Tested manually: `nvm use --delete-prefix 24.18.0` returns exit 0, prints "Now using node v24.18.0 (npm v11.16.0)", and removes only the offending line.
+- Designed the fix: detect the .npmrc prefix/globalconfig conflict BEFORE calling `nvm install`/`nvm use`, warn the operator clearly, and remove the offending line(s) from ~/.npmrc via `sed -i` (preserving other lines). Chose sed over `nvm use --delete-prefix` so the prefix is removed BEFORE `nvm install` runs (nvm install also prints the .npmrc warning via its internal nvm use call, and we want a clean log). The fix is destructive to the prefix line but necessary for nvm to work; the operator is warned and told how to restore the prefix afterwards.
+- Applied the fix to scripts/setup-workstation.sh (lines 87-103): added a 17-line block in setup_node() that detects the conflict, warns, and runs `sed -i '/^\(prefix\|globalconfig\)[[:space:]]*=/d' "$HOME/.npmrc"`. Syntax-checked with `bash -n` — passes.
+- Restored ~/.npmrc to its original prefix state (for re-test) and re-ran the patched setup-workstation.sh end-to-end. Result: exit code 0 after ~57 seconds. All pinned tools verified: node v24.18.0, pnpm 11.10.0, git 2.47.3, vercel 54.20.1, sentry-cli 2.45.0, wrangler 4.107.0 (latest). Optional tools correctly warned as MISSING: docker, gh, doppler.
+- Step 3 — ran `bash scripts/verify-workstation.sh`. Result: exit code 1, with `FAIL node got v24.18.0, expected 24.18.0`. Diagnosed: verify-workstation.sh line 93 compared `node --version` output (which includes the `v` prefix, e.g. `v24.18.0`) against `$NODE_VERSION` (stored without the `v` prefix, e.g. `24.18.0`). The setup script's verify() function (line 244) correctly uses `"v$NODE_VERSION"`, but the verify script missed the `v` prefix. Second script bug.
+- Applied the second fix to scripts/verify-workstation.sh line 93: changed `"$NODE_VERSION"` to `"v$NODE_VERSION"`. Syntax-checked with `bash -n` — passes.
+- Re-ran the patched verify-workstation.sh. Result: exit code 0. All required tools OK (node v24.18.0, pnpm 11.10.0, git 2.47.3, vercel 54.20.1, sentry-cli 2.45.0). Optional tools correctly warned: docker, gh, doppler MISSING. Workspace readiness: pnpm-workspace.yaml not found (expected — Phase 3 not yet merged), .env.local missing (expected — operator hasn't created it yet).
+- Step 4 — independent version verification (loaded nvm, ran each tool's --version directly):
+  - node: v24.18.0 (pin: 24.18.0) ✓
+  - pnpm: 11.10.0 (pin: 11.10.0) ✓
+  - nvm: 0.40.1 (pin: 0.40.1) ✓
+  - git: 2.47.3 (pin: >=2.45) ✓
+  - docker: MISSING (pin: >=27, optional — sandbox limitation, documented)
+  - vercel: 54.20.1 (pin: 54.20.1) ✓
+  - sentry-cli: 2.45.0 (pin: 2.45.0) ✓
+  - wrangler: 4.107.0 (pin: latest) ✓
+  - gh: MISSING (pin: >=2.65, optional — sandbox limitation, documented)
+  - doppler: MISSING (pin: >=0.5.10, optional — sandbox limitation, documented)
+  - which: node, pnpm, vercel, sentry-cli, wrangler all at /home/z/.nvm/versions/node/v24.18.0/bin/ ✓
+- Pin consistency check across the script, the verify script, the runbook, and the Roadmap: all pinned versions match (Node 24.18.0, pnpm 11.10.0, nvm 0.40.1, git >=2.45, docker >=27, vercel 54.20.1, sentry-cli 2.45.0, doppler >=0.5.10). No drift.
+- Updated docs/runbooks/workstation-setup.md with two new Troubleshooting entries: (1) "nvm use exits with code 11 (.npmrc prefix conflict)" — documents the symptom, cause, and the new auto-fix behaviour; (2) "verify-workstation.sh reports node version mismatch (got v24.18.0, expected 24.18.0)" — documents the second bug and its fix. Both entries reference PR #6 (the fix PR for this task).
+- Committing on branch agent/11-phase1-validation-fixes. Two commits: (1) fix(scripts): handle .npmrc prefix conflict in setup-workstation.sh + node version comparison in verify-workstation.sh; (2) docs(runbooks): add troubleshooting entries for both Phase 1 validation bugs. This worklog entry is a third commit on the same branch.
+- Will run an AI Agent Review Session on the diff (per ADR-010 and docs/runbooks/ai-agent-pr-review.md) before merging. Will merge via the relax/restore workflow (ruleset 18567129 → required_approving_review_count=0 → squash-merge → restore to 1 + code-owner + thread resolution). Will verify the restore with a fresh GET.
+
+Stage Summary:
+- Task 11 deliverable: setup-workstation.sh ran end-to-end (YES, after the fix); all versions matched pins (YES); verify-workstation.sh passed (YES, after the fix); two fixes applied (setup-workstation.sh .npmrc prefix conflict auto-handling, verify-workstation.sh node version `v` prefix). PR #6 will be opened on branch agent/11-phase1-validation-fixes with 3 commits (script fix, runbook update, worklog entry).
+- Two script bugs found and fixed:
+  1. setup-workstation.sh: died ungracefully with exit 11 on .npmrc prefix/globalconfig conflict. Fix: detect the conflict early, warn, and remove the offending line(s) via sed before nvm install/use.
+  2. verify-workstation.sh: compared `node --version` output (with `v` prefix) against `$NODE_VERSION` (without `v` prefix). Fix: use `"v$NODE_VERSION"` as the expected value.
+- Optional tools missing in this sandbox (docker, gh, doppler) are sandbox limitations, NOT script bugs. The script correctly warns and continues. Documented in the runbook's existing Troubleshooting section.
+- No Roadmap drift found. The script's pinned versions match Roadmap §1.1-§1.6 exactly. The script's behaviour matches the Roadmap's intent (headless AI-agent profile, token-based auth, idempotent).
+- main-protection ruleset: UNCHANGED at the start of this task. Will be relaxed only for the PR #6 squash-merge, then immediately restored. Verification GET will follow.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) was shared in chat for this session. Rotate at https://github.com/settings/tokens after the session ends.
+- Scope boundary respected: did NOT proceed to Roadmap Phase 3 (Monorepo Scaffold) in this task entry — that's Task 12, handled separately.
