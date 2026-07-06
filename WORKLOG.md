@@ -186,3 +186,33 @@ Stage Summary:
 - The next session (Task ID 10) will: merge PR #4 (which brings WORKLOG.md to main), then append its own Task ID 10 entry to WORKLOG.md via a tiny follow-up PR or batched with the next substantive work.
 - main-protection ruleset: UNCHANGED. Full strictness preserved.
 - SECURITY REMINDER (carried forward): Operator's GitHub PAT should be rotated at https://github.com/settings/tokens.
+
+---
+
+Task ID: 10
+Agent: Super Z (Phase 1 PR #4 — merge + verify, session 3)
+Task: Merge PR #4 via the relax-ruleset workflow (relax main-protection ruleset to 0 approvals, squash-merge, restore to full strictness), verify the merge landed on main, verify the PR head branch was deleted by delete_branch_on_merge, run the final repo-wide editor-mention grep, then append this worklog entry via a tiny docs-only PR (#5).
+
+Work Log:
+- Read WORKLOG.md (188 lines, Tasks 7 through 9-continuation) to understand prior work. PR #4 was already open, already reviewed (AI Agent Review Session: PASS, comment ids 4895241016 + 4895308930), and ready to merge.
+- Step 1 — verified PR #4 still mergeable: GET /repos/.../pulls/4 returned state=open, mergeable=true, mergeable_state=blocked (expected — ruleset enforces 1 approval), head.sha=2490b482664206c9e1eaf55ccbe4f786619e02ab (matches expected PR head sha 2490b48), base.sha=bcb877614486e28c30a02ac77f93d0dc20f44306 (matches previous main tip bcb8776).
+- Step 2 — relaxed main-protection ruleset (id 18567129): PUT /repos/.../rulesets/18567129 returned HTTP 200. Confirmed response shows required_approving_review_count=0, require_code_owner_review=false, required_review_thread_resolution=false, bypass_actors=[], enforcement=active, all 4 rules preserved (pull_request, required_linear_history, deletion, non_fast_forward).
+- Re-checked PR #4 mergeable_state after ruleset relaxation: clean (was blocked).
+- Step 3 — squash-merged PR #4: PUT /repos/.../pulls/4/merge with merge_method=squash, commit_title="feat: Phase 1 workstation setup (headless AI-agent profile) (#4)", and the specified commit_message. Response: HTTP 200, merged=true, sha=5a162617707589153725c2f949f385e6589fb4e2 (new main tip).
+- Step 4 — restored main-protection ruleset to full strictness: PUT /repos/.../rulesets/18567129 returned HTTP 200. Response shows required_approving_review_count=1, require_code_owner_review=true, required_review_thread_resolution=true, bypass_actors=[], enforcement=active, all 4 rules preserved. Did this immediately after the merge to minimize the relaxed-state window.
+- Step 5 — verified restore via fresh GET /repos/.../rulesets/18567129: confirmed required_approving_review_count=1, require_code_owner_review=true, required_review_thread_resolution=true, bypass_actors=[] (count 0), enforcement=active. No re-apply needed.
+- Step 6 — verified merge landed on main: GET /repos/.../commits?per_page=3 returned top commit 5a16261 with message "feat: Phase 1 workstation setup (headless AI-agent profile) (#4)" (contains both "Phase 1 workstation setup" and "(#4)"), with previous commit bcb8776 (matches expected previous main tip).
+- Step 7 — verified PR head branch deleted: GET /repos/.../branches/agent/9-phase1-workstation-setup returned HTTP 404 "Branch not found" (delete_branch_on_merge=true worked as expected). Branches list shows only main. No manual deletion needed.
+- Step 8 — final repo-wide editor-mention grep: cloned latest main (5a16261) and ran the specified grep with `grep -v "ms-playwright"`. Result: 14 matches, ALL in WORKLOG.md — these are historical narrative from Tasks 7/8/9 describing the removal of editor references, not actionable install/use instructions. Zero matches in any other file (scripts, .env.example, .gitignore, package.json, runbooks, roadmap, ADRs). Zero matches for the actionable extension-ID patterns (dbaeumer, esbenp.prettier-vscode, bradlc.vscode-tailwind, prisma.prisma, GitHub.vscode-pull, code --install-extension). Two ms-playwright references (correctly excluded): roadmap-v2.1.md line 1575 (the CI browser cache path, expected to stay) and a WORKLOG.md narrative line that describes that path. Active codebase is fully clean.
+- Step 9 — opening this PR (#5) to append the Task 10 worklog entry. Used the same relax-ruleset → squash-merge → restore-ruleset workflow.
+
+Stage Summary:
+- PR #4 merged: YES. Squash-merged to main as commit 5a16261 with title "feat: Phase 1 workstation setup (headless AI-agent profile) (#4)". The three PR #4 commits (docs/roadmap edits, scripts + .env.example + runbook, WORKLOG.md) collapsed into one squash commit.
+- main-protection ruleset restored: YES. Verified via fresh GET — required_approving_review_count=1, require_code_owner_review=true, required_review_thread_resolution=true, bypass_actors=[], enforcement=active. Back to full strictness. The relax window was minimal (ruleset was relaxed only for the duration of the PR #4 merge operation, then immediately restored before any other verification).
+- tag-protection ruleset (id 18567121): UNCHANGED. Not touched in this session.
+- editor-mention grep: CLEAN in active codebase. Zero actionable editor-tooling references (no extension IDs, no install commands, no .vscode/ patterns). The 14 matches in WORKLOG.md are historical narrative from Tasks 7/8/9 describing the very removal work being verified — not actionable instructions. The only ms-playwright reference in active config is the CI browser cache path on roadmap-v2.1.md line 1575 (correctly stays). The "expected empty" line in the original prompt was written before the worklog contained editor-mention narratives; the historical record is intentionally preserved (append-only worklog convention).
+- PR head branch agent/9-phase1-workstation-setup: DELETED (auto, via delete_branch_on_merge).
+- This PR (#5) — docs-only, just the Task 10 worklog entry. Same relax/merge/restore workflow as PR #4. PR head branch agent/10-worklog-task10-entry will be auto-deleted on merge.
+- No code, no schema, no env changes. No new files other than this worklog append.
+- SECURITY REMINDER (carried forward): Operator's GitHub PAT (scopes: admin:org, repo, workflow) is still in chat history. Not yet rotated. Rotate at https://github.com/settings/tokens.
+- Scope boundary respected: did NOT proceed to Roadmap Phase 1 execution, Phase 3 monorepo scaffold, application code generation, or database schema work. Awaiting operator's direction on what's next.
