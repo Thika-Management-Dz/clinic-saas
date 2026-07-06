@@ -84,6 +84,24 @@ setup_node() {
     . "$NVM_DIR/nvm.sh"
   fi
 
+  # Detect .npmrc prefix/globalconfig conflict (nvm use exits 11 if either is
+  # set). nvm requires per-Node-version control over npm's global install
+  # location; an .npmrc `prefix=` or `globalconfig=` line overrides that and
+  # breaks nvm isolation. When detected, we remove the offending line(s) from
+  # ~/.npmrc (preserving other lines) BEFORE calling nvm install/use. This is
+  # destructive to the prefix setting but necessary for nvm to work; the
+  # operator is warned and told how to restore the prefix afterwards if needed.
+  # Common trigger: AI-agent sandboxes that share a global npm install dir
+  # across Node versions for non-clinic-saas tools (mermaid-cli, docx, etc.).
+  if [ -f "$HOME/.npmrc" ] && grep -qE '^(prefix|globalconfig)[[:space:]]*=' "$HOME/.npmrc"; then
+    warn "  ~/.npmrc contains a 'prefix=' or 'globalconfig=' setting."
+    warn "  This is incompatible with nvm's per-Node-version isolation."
+    warn "  Removing the offending line(s) from ~/.npmrc (other lines are preserved)."
+    warn "  If you need the prefix for non-clinic-saas tools, restore it after this script"
+    warn "  finishes (e.g. by re-adding 'prefix=...' to ~/.npmrc)."
+    sed -i '/^\(prefix\|globalconfig\)[[:space:]]*=/d' "$HOME/.npmrc"
+  fi
+
   if ! nvm ls "$NODE_VERSION" >/dev/null 2>&1; then
     log "Installing Node $NODE_VERSION..."
     nvm install "$NODE_VERSION"
