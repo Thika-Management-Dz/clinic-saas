@@ -1,0 +1,44 @@
+name: "Feature request"
+description: "Propose a new capability (will be converted to an Agent Task before pickup)."
+title: "[feat] <short description>"
+labels: ["feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      placeholder: "What clinical / operational problem does this solve?"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: blueprint-phase
+    attributes:
+      label: Blueprint phase
+      options:
+        - "Phase 1 — Patient & Appointment"
+        - "Phase 2 — Clinical Encounter"
+        - "Phase 3 — Dental Module"
+        - "Phase 4 — Billing & Cash"
+        - "Phase 5 — Offline-First PWA"
+        - "Phase 6 — Bilingual Polish"
+        - "Phase 7 — Imaging"
+        - "Phase 8 — Reports & Audit"
+        - "Phase 9 — Inventory + Lab + Device"
+        - "Phase 10 — FHIR Export"
+        - "Phase 11 — CNAS/CASNOS"
+        - "Phase 12+ — Patient Portal"
+        - "Phase 13+ — Telemedicine"
+    validations:
+      required: true

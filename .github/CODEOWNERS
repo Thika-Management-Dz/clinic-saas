@@ -1,0 +1,15 @@
+# Default owner — solo operator
+* @AguHo
+
+# Per-area ownership (expand as team grows)
+/packages/db/         @AguHo
+/packages/auth/       @AguHo
+/packages/contracts/  @AguHo
+/apps/api/src/modules/dental/   @AguHo
+/apps/api/src/modules/billing/  @AguHo
+/docs/adr/            @AguHo
+/docs/runbooks/       @AguHo
+
+# Force review on dependency changes
+^package.json        @AguHo
+^pnpm-lock.yaml      @AguHo

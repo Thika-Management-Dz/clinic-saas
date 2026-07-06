@@ -1,0 +1,49 @@
+name: "Bug report"
+description: "Report a defect (not for agent-driven work — use Agent Task)."
+title: "[bug] <short description>"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      placeholder: "A clear description of the defect."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: input
+    id: locale
+    attributes:
+      label: Locale
+      placeholder: "ar-DZ / fr-DZ / both"
+    validations:
+      required: true
+  - type: input
+    id: role
+    attributes:
+      label: Role
+      placeholder: "receptionist / dentist / clinic_admin"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots (NO patient PII)
+      description: "Scrub any patient-identifiable data before pasting."
+    validations:
+      required: false

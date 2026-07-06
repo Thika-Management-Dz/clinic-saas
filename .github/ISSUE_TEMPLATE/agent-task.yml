@@ -1,0 +1,75 @@
+name: "Agent Task (issue-as-spec)"
+description: "A self-contained task spec an AI agent can pick up cold. Use this for all agent-driven work."
+title: "<verb-phrase, e.g. 'Add FDI odontogram chart component'>"
+labels: ["agent-task"]
+body:
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User story
+      description: "As a <role>, I want <capability>, so that <benefit>."
+      placeholder: "As a dentist, I want to chart a finding on a tooth by clicking it, so that the odontogram stays current."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: "Checkable boxes. Each must be observable."
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] Renders correctly in ar-DZ (RTL) and fr-DZ (LTR)
+        - [ ] No axe-core critical violations
+    validations:
+      required: true
+  - type: textarea
+    id: file-paths
+    attributes:
+      label: Files to touch
+      description: "Concrete paths the agent should create/modify."
+      placeholder: |
+        apps/web/src/app/[locale]/(app)/dental/odontogram.tsx
+        apps/api/src/modules/dental/dental.service.ts
+        packages/db/src/schema/dental.ts
+    validations:
+      required: true
+  - type: textarea
+    id: test-expectations
+    attributes:
+      label: Test expectations
+      description: "What tests must pass / be added."
+      placeholder: |
+        - Unit: FDI validation rejects tooth 99, accepts 16
+        - E2E: dentist charts MOD on tooth 16, finding persists
+    validations:
+      required: true
+  - type: textarea
+    id: agents-refs
+    attributes:
+      label: AGENTS.md references
+      description: "Which AGENTS.md rules / ADRs / blueprint sections apply?"
+      placeholder: |
+        - AGENTS.md §Dental Module Rules (FDI ISO 3950:2016)
+        - ADR-007 FDI tooth notation
+        - Blueprint §9.4
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: "What the agent must NOT do in this task."
+      placeholder: |
+        - Periodontal charting (separate task)
+        - PDF print of the odontogram
+    validations:
+      required: true
+  - type: textarea
+    id: assumptions
+    attributes:
+      label: Allowed assumptions
+      description: "If the spec is ambiguous, the agent may assume — and MUST document assumptions in the PR."
+      placeholder: "May assume the adult (32-tooth) view only; primary dentition deferred."
+    validations:
+      required: false
