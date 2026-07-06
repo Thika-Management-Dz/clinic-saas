@@ -1,0 +1,6 @@
+{
+  "name": "@clinic-saas/patient-portal",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Patient portal stub. Phase 12+ — see blueprint §11.6. Not scaffolded as a Next.js app yet; this package reserves the name and workspace slot."
+}
