@@ -1,0 +1,91 @@
+# docker-compose.yml
+#
+# Phase 4.1 — Local development services for Clinic Management SaaS.
+# Per Roadmap v2.1 §4.1 and ADR-001 (PostgreSQL + RLS).
+#
+# Services:
+#   postgres  — PostgreSQL 17 (RLS foundation; the app connects as app_role
+#               with NOBYPASSRLS so policies are enforced).
+#   redis     — Redis 7 (BullMQ queues for apps/worker; Phase 11 registers
+#               the first real queues).
+#   orthanc   — Orthanc DICOM server (Phase 10 imaging dev; stub now so the
+#               dev environment matches production shape from day one).
+#
+# Usage:
+#   docker compose up -d              # start all three services
+#   docker compose ps                 # all three must show "healthy"
+#   docker compose logs -f postgres   # tail postgres logs
+#   docker compose down               # stop (keeps volumes)
+#   docker compose down -v            # stop + DELETE all data (reset)
+#
+# The first `docker compose up -d` auto-runs packages/db/sql/001_roles.sql
+# inside the postgres container (mounted to /docker-entrypoint-initdb.d/).
+# This creates the ops_superuser (BYPASSRLS) and app_role (NOBYPASSRLS)
+# roles. To re-run the roles SQL on an existing volume:
+#   docker compose exec postgres \
+#     psql -U postgres -d clinic_dev -f /docker-entrypoint-initdb.d/001_roles.sql
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: clinic-saas-postgres
+    environment:
+      # JC-18-1: POSTGRES_USER is `postgres` (the default superuser), NOT
+      # `app_role` as Roadmap §4.1.1 originally specified. Rationale: if
+      # POSTGRES_USER=app_role, the Docker image creates app_role as a
+      # superuser, and the roles SQL must then downgrade app_role — a
+      # chicken-and-egg problem (the roadmap acknowledges this in §4.2.2
+      # and suggests a Docker entrypoint script as the workaround). Using
+      # POSTGRES_USER=postgres avoids the problem entirely: the initdb
+      # script runs as the real superuser (postgres) and creates both
+      # ops_superuser and app_role from scratch with the correct
+      # privileges. app_role is never a superuser, even momentarily.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev_postgres_password
+      POSTGRES_DB: clinic_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-run the roles SQL on first init (when the data dir is empty).
+      # Read-only mount so the container cannot modify the source file.
+      - ./packages/db/sql/001_roles.sql:/docker-entrypoint-initdb.d/001_roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d clinic_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: clinic-saas-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  orthanc:
+    # Orthanc DICOM server — Phase 10 imaging dev. Stub now so the dev
+    # environment matches production shape. Default config listens on
+    # :8042 with auth enabled (orthanc/orthanc). Phase 10 will mount a
+    # custom orthanc.json. Pinning to `latest` is acceptable for dev;
+    # Phase 10 should pin to a specific version for reproducibility.
+    image: orthancteam/orthanc:latest
+    container_name: clinic-saas-orthanc
+    ports:
+      - "8042:8042"
+    volumes:
+      - orthancdata:/var/lib/orthanc/db
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  orthancdata:
