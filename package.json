@@ -13,6 +13,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
+    "test:scripts": "bash tests/test-setup-workstation.sh",
     "db:generate": "pnpm --filter @clinic-saas/db db:generate",
     "db:migrate": "pnpm --filter @clinic-saas/db db:migrate",
     "db:studio": "pnpm --filter @clinic-saas/db db:studio"
