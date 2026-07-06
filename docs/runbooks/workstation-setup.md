@@ -183,6 +183,55 @@ Phase 3, it means `pnpm-workspace.yaml` exists but `package.json` references
 packages that don't exist yet. Re-run `setup-workstation.sh` after pulling
 the latest main.
 
+### `nvm use` exits with code 11 (`.npmrc` prefix conflict)
+
+Symptom: `setup-workstation.sh` aborts during the Node install step with
+`exit code: 11` and the message:
+
+```
+Your user's .npmrc file (${HOME}/.npmrc)
+has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.
+Run `nvm use --delete-prefix v24.18.0` to unset it.
+```
+
+Cause: `~/.npmrc` contains a `prefix=` or `globalconfig=` line. This is
+incompatible with nvm's per-Node-version isolation model (nvm switches Node
+versions by changing `PATH`; a fixed npm prefix overrides that, so npm would
+install globals to a single shared directory instead of per-Node-version
+directories). Common trigger: AI-agent sandboxes that share a global npm
+install dir across Node versions for non-clinic-saas tools (mermaid-cli,
+docx, sharp, etc.).
+
+Fix: as of Task 11 (PR #6), `setup-workstation.sh` detects this conflict
+automatically, prints a warning, and removes the offending `prefix=` /
+`globalconfig=` line(s) from `~/.npmrc` (preserving other lines) before
+calling `nvm install` / `nvm use`. The operator is warned and told how to
+restore the prefix afterwards if needed.
+
+If you need the prefix for non-clinic-saas tools after the script finishes,
+restore it manually:
+
+```bash
+echo "prefix=/home/your-user/.npm-global" >> ~/.npmrc
+```
+
+Or, better, use a project-local `.npmrc` for the non-clinic-saas tools so
+it doesn't conflict with nvm's global isolation.
+
+### `verify-workstation.sh` reports node version mismatch (got `v24.18.0`, expected `24.18.0`)
+
+Symptom: `verify-workstation.sh` prints `FAIL node got v24.18.0, expected
+24.18.0` even though `node --version` returns the correct version.
+
+Cause: as of Task 11 (PR #6), this is fixed. The bug was that
+`verify-workstation.sh` compared `node --version` output (which includes the
+`v` prefix, e.g. `v24.18.0`) against `NODE_VERSION` (which is stored without
+the `v` prefix, e.g. `24.18.0`). The fix uses `"v$NODE_VERSION"` as the
+expected value, matching the `node --version` output format.
+
+If you see this failure on an older checkout, pull the latest `main` and
+re-run.
+
 ## Cross-references
 
 - [Roadmap v2.1 §1](../roadmap-v2.1.md) — Phase 1 (Developer Workstation &
