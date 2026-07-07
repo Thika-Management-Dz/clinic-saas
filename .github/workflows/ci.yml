@@ -214,8 +214,19 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f packages/db/sql/002_audit_log_immutable.sql
 
-      # Finally, run the integration test suite. 19 tests as of Phase 4
-      # (13 RLS + 6 audit_log). The suite fails (not skips) if DATABASE_URL
-      # is missing — per docs/conventions/testing.md.
+      # Apply 004_set_tenant.sql — parameterized set_tenant(uuid) SECURITY
+      # DEFINER function for Phase 5's TenantInterceptor. Must run AFTER
+      # 002_audit_log_immutable.sql (per the file's apply-order comment).
+      - name: Apply 004_set_tenant.sql (set_tenant function for Phase 5)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/004_set_tenant.sql
+
+      # Finally, run the integration test suite. 19+ tests as of Phase 4
+      # (13 RLS + audit_log; count grows with PR2's concurrent-INSERT +
+      # per-tenant-independence tests). The suite fails (not skips) if
+      # DATABASE_URL is missing — per docs/conventions/testing.md.
       - name: Run integration tests (Vitest)
         run: pnpm --filter @clinic-saas/db test

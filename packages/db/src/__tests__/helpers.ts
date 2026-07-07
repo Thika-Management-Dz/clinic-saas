@@ -72,6 +72,26 @@ export function connectAsOwner() {
  * Run a function inside a transaction with SET LOCAL app.current_tenant.
  * The transaction auto-rolls-back when fn returns or throws (test isolation).
  *
+ * P0-3 FIX (PR2 / Task 20-b, 2026-07-07): added UUID regex validation
+ * before the string interpolation. The OLD code did
+ * `tx.unsafe(\`SET LOCAL app.current_tenant = '${tenantId}'\`)` with no
+ * validation — safe today because tests use hardcoded UUIDs from
+ * TEST_TENANT_A / TEST_TENANT_B, but if this pattern leaked into the
+ * Phase 5 TenantInterceptor, any user-controlled value flowing into the
+ * tenant context would be a SQL injection vector. The regex check throws
+ * early if tenantId is not a valid UUID, so even if a future caller
+ * passes an attacker-controlled string, it can never reach the
+ * interpolation. See docs/audits/2026-07-07-critical-review.md §3.3
+ * (P0-3) and docs/adr/ADR-001.md (RLS pool model).
+ *
+ * Phase 5's TenantInterceptor MUST use a parameterized set_tenant(p_tenant uuid)
+ * SECURITY DEFINER function instead of this unsafe() pattern. The function
+ * is added in this PR as packages/db/sql/004_set_tenant.sql. The
+ * TenantInterceptor will call `SELECT set_tenant($1)` with a parameterized
+ * query, eliminating the string interpolation entirely. This withTenant
+ * helper remains for tests (where the input is always a hardcoded UUID)
+ * but should NOT be the template for production code.
+ *
  * NOTE: the return type is cast to T because postgres.js's `sql.begin()`
  * uses `UnwrapPromiseArray<T>` which doesn't compose cleanly with generics.
  * The runtime behavior is correct — the callback's resolved value is
@@ -87,7 +107,20 @@ export async function withTenant<T>(
   tenantId: string,
   fn: (tx: postgres.TransactionSql) => Promise<T>,
 ): Promise<T> {
-   
+  // P0-3 fix: validate tenantId is a valid UUID before interpolation.
+  // Throws early if it's not — never reaches the unsafe() call.
+  // The regex matches the canonical 8-4-4-4-12 hex format (RFC 4122).
+  const UUID_REGEX =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_REGEX.test(tenantId)) {
+    throw new Error(
+      `withTenant: tenantId must be a valid UUID (got "${tenantId}"). ` +
+        'Phase 5 TenantInterceptor must use the parameterized set_tenant(uuid) ' +
+        'SECURITY DEFINER function instead of this helper. See ADR-001 and ' +
+        'the critical review P0-3 (docs/audits/2026-07-07-critical-review.md §3.3).',
+    );
+  }
+
   const result = await sql.begin(async (tx) => {
     await tx.unsafe(`SET LOCAL app.current_tenant = '${tenantId}'`);
     return await fn(tx);

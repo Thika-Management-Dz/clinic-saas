@@ -78,6 +78,57 @@ REVOKE UPDATE, DELETE ON audit_log FROM PUBLIC;
 --   add the TS-side test for that function per testing.md §3.1a).
 --
 -- The hash is stored as hex text (64 chars for SHA-256) per JC-18-4.
+--
+-- ============================================================================
+-- P0-4 + P0-5 FIX (PR2 / Task 20-b, 2026-07-07)
+-- ============================================================================
+-- This function was redesigned in PR2 to fix two P0 blockers from the
+-- critical review (docs/audits/2026-07-07-critical-review.md §3.4 + §3.5):
+--
+--   P0-4: Audit log hash chain race condition. The OLD function did
+--         `SELECT hash_curr FROM audit_log ORDER BY id DESC LIMIT 1`
+--         with no lock. Two concurrent INSERTs in separate transactions
+--         could both read the same prev_hash, forking the chain.
+--
+--   P0-5: SECURITY DEFINER function reads across all tenants. The OLD
+--         function read MAX(id) GLOBALLY — tenant A's audit chain
+--         integrity depended on tenant B's data.
+--
+-- The NEW design:
+--   1. Per-tenant prev_hash lookup: `WHERE tenant_id = NEW.tenant_id`.
+--      Each tenant has its own independent hash chain. Tenant A's chain
+--      no longer depends on tenant B's data. This also fixes P0-5.
+--
+--   2. Advisory lock: `PERFORM pg_advisory_xact_lock(hashtext(NEW.tenant_id::text))`
+--      at the top of the function body. This serializes concurrent
+--      INSERTs for the SAME tenant (different tenants proceed in
+--      parallel). The lock is transaction-scoped (released at COMMIT/
+--      ROLLBACK), so it doesn't leak across transactions. This fixes
+--      P0-4 for the same-tenant concurrent INSERT case (which is the
+--      realistic case — one tenant's audit events come from one
+--      clinic's users).
+--
+-- The function remains SECURITY DEFINER + SET search_path = public
+-- (unchanged). The SET search_path = public prevents search_path
+-- injection. SECURITY DEFINER is still required because app_role
+-- (NOBYPASSRLS) cannot read other tenants' audit_log rows (RLS
+-- restricts the SELECT to the current tenant context). The function
+-- owner (postgres on local dev, neondb_owner on Neon staging) has
+-- BYPASSRLS, so the per-tenant SELECT succeeds.
+--
+-- MIGRATION NOTE: this is CREATE OR REPLACE FUNCTION — no migration
+-- needed. Existing audit_log rows on Neon staging have hashes computed
+-- with the OLD global-chain logic. After applying this new function,
+-- the chain for existing rows is still valid (the new function only
+-- affects NEW rows). But the global chain is BROKEN at the cutover
+-- point: the first NEW row inserted after the cutover will have
+-- hash_prev = (the most recent row FOR THAT TENANT, by id), which may
+-- not be the globally-most-recent row. This is EXPECTED and CORRECT —
+-- the chain transitions from global to per-tenant. The staging DB can
+-- be reset (see docs/runbooks/neon-staging.md §"Resetting the staging
+-- DB") if a clean per-tenant chain is needed for testing. Production
+-- (Phase 16+) will start fresh with no prior audit_log rows.
+-- ============================================================================
 
 CREATE OR REPLACE FUNCTION compute_audit_hash_curr()
 RETURNS TRIGGER
@@ -90,10 +141,23 @@ DECLARE
     canonical JSONB;
     row_to_hash TEXT;
 BEGIN
-    -- Read the previous row's hash_curr (the most recent row by id).
-    -- If this is the first row, prev_hash is NULL.
+    -- Per-tenant advisory lock (P0-4 fix). Serializes concurrent INSERTs
+    -- for the SAME tenant (different tenants proceed in parallel).
+    -- Transaction-scoped — released at COMMIT/ROLLBACK, no leak.
+    -- hashtext() returns a 32-bit int; pg_advisory_xact_lock takes a
+    -- bigint. The implicit cast is safe (int → bigint is widening).
+    PERFORM pg_advisory_xact_lock(hashtext(NEW.tenant_id::text));
+
+    -- Per-tenant prev_hash lookup (P0-4 + P0-5 fix).
+    -- Read the previous row's hash_curr FOR THIS TENANT (the most recent
+    -- row by id, filtered by tenant_id). If this is the first row for
+    -- this tenant, prev_hash is NULL.
+    -- SECURITY DEFINER + the function owner's BYPASSRLS lets this SELECT
+    -- read other tenants' rows if needed — but the WHERE clause ensures
+    -- we only read THIS tenant's rows. No cross-tenant data exposure.
     SELECT hash_curr INTO prev_hash
     FROM audit_log
+    WHERE tenant_id = NEW.tenant_id
     ORDER BY id DESC
     LIMIT 1;
 
@@ -121,7 +185,8 @@ BEGIN
     );
 
     -- Compute the hash input: prev_hash || canonical_json.
-    -- If prev_hash is NULL (first row), the input is just canonical_json.
+    -- If prev_hash is NULL (first row for this tenant), the input is just
+    -- canonical_json.
     row_to_hash := COALESCE(prev_hash, '') || canonical::text;
 
     -- Compute SHA-256 and store as hex.
@@ -136,15 +201,17 @@ $$;
 -- =============================================================================
 -- Fires compute_audit_hash_curr() before every INSERT on audit_log.
 -- The trigger is SECURITY DEFINER (via the function) so it can read the
--- previous row even if the inserting role (app_role) couldn't otherwise
--- see other rows (RLS would normally restrict this — but we need to read
--- the MAX(id) row's hash_curr regardless of tenant to maintain the chain).
+-- previous row FOR THE SAME TENANT even if the inserting role (app_role)
+-- couldn't otherwise see other rows (RLS would normally restrict this —
+-- but we need to read the previous row's hash_curr for THIS tenant to
+-- maintain the per-tenant chain).
 --
--- SECURITY IMPLICATION: the function reads across tenants (MAX(id) is
--- global). This is necessary for the hash chain to be sequential. The
--- function only reads hash_curr (a hash, not PII) — no patient data is
--- exposed. The function is SECURITY DEFINER + SET search_path = public
--- to prevent search_path injection.
+-- SECURITY IMPLICATION (UPDATED by PR2 / Task 20-b): the function now
+-- reads ONLY the current tenant's rows (WHERE tenant_id = NEW.tenant_id).
+-- The OLD global MAX(id) read was a P0-5 cross-tenant coupling bug; it is
+-- now fixed. The function still only reads hash_curr (a hash, not PII) —
+-- no patient data is exposed. The function is SECURITY DEFINER +
+-- SET search_path = public to prevent search_path injection.
 
 DROP TRIGGER IF EXISTS audit_log_hash_chain ON audit_log;
 CREATE TRIGGER audit_log_hash_chain
