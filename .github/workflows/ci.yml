@@ -1,0 +1,221 @@
+# .github/workflows/ci.yml
+#
+# CI — the machine gate for clinic-saas.
+#
+# Per ADR-012 (this PR), ADR-010's deferral of CI to Phase 7 is rescinded:
+# CI lands NOW as the machine-enforced merge gate. The manual AI-agent review
+# session (ADR-010) is preserved as the second gate — both must pass before
+# merge. "Author-blind review is not author-blind enforcement." (Critical
+# review, §10.)
+#
+# Triggers:
+#   - pull_request (to main): runs on every PR open/sync/reopen.
+#   - push (to main): runs after merge so we catch breakage on main itself.
+#
+# Concurrency: cancel superseded runs on the same ref (saves Actions minutes).
+#
+# Jobs (all run in parallel; integration depends on lint+typecheck):
+#   1. lint         — pnpm lint (eslint flat config across all 8 workspaces)
+#   2. typecheck    — pnpm typecheck (tsc --noEmit across all 8 workspaces)
+#   3. test-scripts — bash tests/test-setup-workstation.sh (no DB needed)
+#   4. integration  — full DB integration: postgres:17-alpine service container,
+#                     001_roles.sql + drizzle migrations + 003_force_rls.sql
+#                     + 002_audit_log_immutable.sql, then Vitest suite
+#                     (RLS + audit_log + hash chain = 19 tests as of Phase 4).
+#
+# All third-party actions are pinned to commit SHAs (not tags) per the
+# critical review §9.1 30-1: "Pin actions to SHA, not tag." This prevents
+# supply-chain attacks where a tag is moved to a malicious commit. SHAs are
+# from the latest stable release at the time of this PR:
+#   - actions/checkout@v7.0.0       → 9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+#   - actions/setup-node@v6.4.0     → 48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+#   - pnpm/action-setup@v6.0.9      → 0ebf47130e4866e96fce0953f49152a61190b271
+#
+# The CI check name exposed to branch protection is "integration" (the job
+# name). After this PR lands, the main-protection ruleset (ID 18567129) is
+# updated to require this check — see docs/runbooks/ci.md for the relax/
+# restore payloads (which must include the required_status_check rule).
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref. The expression evaluates to a
+# stable concurrency key per branch / PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege permissions. The default GITHUB_TOKEN is sufficient for
+# running checks; no write scope needed.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.10.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run eslint
+        run: pnpm lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.10.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run tsc --noEmit
+        run: pnpm typecheck
+
+  test-scripts:
+    name: test-scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Run bash setup-workstation tests
+        run: bash tests/test-setup-workstation.sh
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Run integration even if lint/typecheck fail, so contributors get all
+    # signal at once. (Trade-off: more Actions minutes, but faster iteration.)
+    needs: []
+    # Postgres 17 service container — matches docker-compose.yml.
+    # POSTGRES_USER=postgres (the real superuser) per JC-18-1: if you set
+    # POSTGRES_USER=app_role, the Docker image creates app_role as a
+    # superuser, and 001_roles.sql must then downgrade it — a chicken-and-egg
+    # problem. Using POSTGRES_USER=postgres avoids that entirely.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dev_postgres_password
+          POSTGRES_DB: clinic_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clinic_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # DATABASE_URL — the app connection (app_role, NOBYPASSRLS).
+      # Matches the dev defaults in packages/db/sql/001_roles.sql.
+      # These are dev-only credentials committed in 001_roles.sql (P0-2
+      # tracks the rotation to env-vars; tracked in 30-60-90-day-plan.md).
+      DATABASE_URL: postgresql://app_role:dev_password@localhost:5432/clinic_dev
+      # MIGRATION_DATABASE_URL — connects as ops_superuser (BYPASSRLS) so
+      # drizzle-kit can CREATE TABLE / CREATE POLICY. Per drizzle.config.ts.
+      MIGRATION_DATABASE_URL: postgresql://ops_superuser:dev_ops_password@localhost:5432/clinic_dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.10.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Install psql so we can apply the SQL files directly. postgresql-client
+      # is small (~10 MB) and installs in ~5s.
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      # Apply 001_roles.sql as the postgres superuser (the only role that
+      # exists at first init). Creates ops_superuser (BYPASSRLS) + app_role
+      # (NOBYPASSRLS) with the dev defaults. Idempotent IF the roles don't
+      # exist; in CI the container is fresh, so this always creates them.
+      - name: Apply 001_roles.sql (creates ops_superuser + app_role)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/001_roles.sql
+
+      # Run drizzle-kit migrations — creates the 8 Phase 4 tables with
+      # ENABLE RLS + policies. Reads MIGRATION_DATABASE_URL.
+      - name: Run drizzle migrations
+        run: pnpm --filter @clinic-saas/db db:migrate
+
+      # Apply 003_force_rls.sql — adds FORCE ROW LEVEL SECURITY to every
+      # tenant-scoped table (JC-18-3: Drizzle 0.40.1 has no forceRLS() API).
+      # Must run AFTER drizzle migrations (tables must exist).
+      - name: Apply 003_force_rls.sql (FORCE RLS on tenant tables)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/003_force_rls.sql
+
+      # Apply 002_audit_log_immutable.sql — REVOKE UPDATE/DELETE on audit_log
+      # + pgcrypto extension + compute_audit_hash_curr() trigger function +
+      # BEFORE INSERT trigger. Must run AFTER drizzle migrations (audit_log
+      # table must exist).
+      - name: Apply 002_audit_log_immutable.sql (audit immutability + hash chain)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/002_audit_log_immutable.sql
+
+      # Finally, run the integration test suite. 19 tests as of Phase 4
+      # (13 RLS + 6 audit_log). The suite fails (not skips) if DATABASE_URL
+      # is missing — per docs/conventions/testing.md.
+      - name: Run integration tests (Vitest)
+        run: pnpm --filter @clinic-saas/db test

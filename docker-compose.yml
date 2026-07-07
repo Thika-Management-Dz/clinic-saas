@@ -75,9 +75,15 @@ services:
     # Orthanc DICOM server — Phase 10 imaging dev. Stub now so the dev
     # environment matches production shape. Default config listens on
     # :8042 with auth enabled (orthanc/orthanc). Phase 10 will mount a
-    # custom orthanc.json. Pinning to `latest` is acceptable for dev;
-    # Phase 10 should pin to a specific version for reproducibility.
-    image: orthancteam/orthanc:latest
+    # custom orthanc.json.
+    #
+    # Image pinned to a specific stable tag (NOT :latest) per the critical
+    # review §9.1 30-8: ":latest is unpinned. Production deployment should
+    # scan images for CVEs." Tag 26.6.1 was the latest stable at the time
+    # of PR #28. Bump deliberately — never auto-bump via Renovate without
+    # testing the imaging module first (Phase 10+).
+    # See: https://hub.docker.com/r/orthancteam/orthanc/tags
+    image: orthancteam/orthanc:26.6.1
     container_name: clinic-saas-orthanc
     ports:
       - "8042:8042"

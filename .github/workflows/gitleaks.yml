@@ -1,0 +1,63 @@
+# .github/workflows/gitleaks.yml
+#
+# gitleaks GitHub Action — the machine-enforced secret-scanning gate.
+#
+# Runs on every pull_request and on every push to main. Scans the full diff
+# (for PRs) or the latest commit (for pushes) for hardcoded secrets using the
+# gitleaks default ruleset (extensible via .gitleaks.toml in the repo root
+# if needed in the future).
+#
+# This is the CI-side counterpart to .pre-commit-config.yaml (local hygiene).
+# Per SECURITY.md "Secret hygiene": secrets caught here block merge.
+#
+# The action is pinned to SHA (not tag) per the critical review §9.1 30-1
+# ("Pin actions to SHA, not tag"). SHA is from gitleaks-action v3.0.0:
+#   e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
+#
+# A finding on a PR fails the "gitleaks" check, which is a required_status_check
+# in the main-protection ruleset (ID 18567129) after PR #28 lands. See
+# docs/runbooks/ci.md for the relax/restore payloads.
+#
+# Note on the GITLEAKS_LICENSE secret: gitleaks-action v3+ requires a
+# Gitleaks Team license (paid) for the latest ruleset updates. Without it,
+# the action falls back to the open-source rules bundled with the gitleaks
+# binary, which is sufficient for this project. We do NOT set
+# GITLEAKS_LICENSE; if a future audit finds the open-source rules
+# insufficient, the operator can add a license secret at
+# https://github.com/Thika-Management-Dz/clinic-saas/settings/secrets/actions
+
+name: gitleaks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: gitleaks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          # fetch full history so gitleaks can scan all commits in the PR diff
+          fetch-depth: 0
+      - name: gitleaks-action
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          # The default GITHUB_TOKEN is sufficient for PR scanning on a
+          # public repo. No GITLEAKS_LICENSE is set — see file header.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
