@@ -1,38 +1,153 @@
 // apps/api/src/modules/auth/auth.controller.ts
 //
-// Mounts Better Auth's request handler at /auth/*.
-// With the global prefix 'api' set in main.ts, this becomes /api/auth/*.
+// Mounts Better Auth's request handler at /auth/* and provides
+// custom endpoints for tenant switching and user info.
+// With the global prefix 'api' set in main.ts, routes become /api/auth/*.
 //
-// Better Auth manages its own routing within this path:
+// Better Auth manages its own routing for built-in endpoints:
 //   POST /api/auth/sign-up/email
 //   POST /api/auth/sign-in/email
 //   POST /api/auth/sign-out
 //   GET  /api/auth/get-session
 //   POST /api/auth/organization/*  (organization plugin)
-//   etc.
+//
+// Custom endpoints:
+//   POST /api/auth/switch-tenant  — set active organization
+//   GET  /api/auth/me              — current user, tenant, permissions
 
 import { auth } from '@clinic-saas/auth';
 import {
   Controller,
   All,
+  Post,
+  Get,
   Req,
   Res,
+  Body,
   HttpCode,
+  UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
+import type { TenantRequest } from '@clinic-saas/db';
 
 @Controller('auth')
 export class AuthController {
+  /**
+   * POST /api/auth/switch-tenant
+   *
+   * Switch the authenticated user's active organization (tenant).
+   * Verifies the user is a member of the target organization via
+   * Better Auth's member table.
+   *
+   * Per Roadmap v2.1 §5.7.1 and P0-6 resolution (90-4).
+   */
+  @Post('switch-tenant')
+  @HttpCode(200)
+  async switchTenant(
+    @Req() req: FastifyRequest & TenantRequest,
+    @Res() res: FastifyReply,
+    @Body() body: { organizationId: string },
+  ): Promise<void> {
+    if (!body.organizationId) {
+      throw new BadRequestException('organizationId is required');
+    }
+
+    // Build Web API request for Better Auth's setActiveOrganization.
+    const protocol = req.protocol;
+    const host = req.headers.host ?? 'localhost';
+    const url = `${protocol}://${host}/api/auth/organization/set-active`;
+
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value !== undefined) {
+        headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+      }
+    }
+    headers.set('content-type', 'application/json');
+
+    const webRequest = new Request(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ organizationId: body.organizationId }),
+    });
+
+    const webResponse = await auth.handler(webRequest);
+
+    // Proxy the response.
+    res.status(webResponse.status);
+    for (const [key, value] of webResponse.headers.entries()) {
+      res.header(key, value);
+    }
+    res.send(await webResponse.text());
+  }
+
+  /**
+   * GET /api/auth/me
+   *
+   * Returns the current user, their active tenant (organization),
+   * and their effective permissions. The frontend uses this to
+   * render role-appropriate UI.
+   *
+   * Per Roadmap v2.1 §5.7.2.
+   */
+  @Get('me')
+  async getMe(
+    @Req() req: FastifyRequest & TenantRequest,
+  ): Promise<object> {
+    // Get session from Better Auth.
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (typeof value === 'string') {
+        headers[key] = value;
+      }
+    }
+
+    const session = await auth.api.getSession({ headers });
+
+    if (!session) {
+      throw new UnauthorizedException('Not authenticated');
+    }
+
+    // TODO (Phase 10): Compute effective permissions by walking
+    // role_inheritance graph. For now, return the user/org info.
+
+    return {
+      user: {
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        emailVerified: session.user.emailVerified,
+        image: session.user.image,
+      },
+      session: {
+        id: session.session.id,
+        activeOrganizationId: session.session.activeOrganizationId,
+        expiresAt: session.session.expiresAt,
+      },
+      activeOrganization: session.session.activeOrganizationId
+        ? { id: session.session.activeOrganizationId }
+        : null,
+      // REVIEW: Add effective permissions list when RBAC walk is
+      // implemented in PermissionsGuard (Phase 10).
+      permissions: [] as string[],
+    };
+  }
+
+  /**
+   * Catch-all handler for Better Auth's built-in routes.
+   * Handles sign-up, sign-in, sign-out, get-session, organization/*, etc.
+   *
+   * Better Auth v1.6+ handler expects a standard Web API Request and
+   * returns a Web API Response. We construct a Web Request from the
+   * Fastify request properties and proxy the Web Response back.
+   */
   @All('*')
   @HttpCode(200)
   async handleAuth(
     @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ): Promise<void> {
-    // Better Auth v1.6+ handler expects a standard Web API Request and
-    // returns a Web API Response. We construct a Web Request from the
-    // Fastify request properties and then proxy the Web Response back
-    // through the Fastify reply.
     const protocol = req.protocol;
     const host = req.headers.host ?? 'localhost';
     const url = `${protocol}://${host}${req.url}`;
