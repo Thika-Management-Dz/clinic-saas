@@ -986,3 +986,45 @@ Stage Summary:
 - SQL changes applied to Neon staging (compute_audit_hash_curr replaced + set_tenant created). The global-to-per-tenant chain cutover is documented in the function comment — existing rows still have global-chain hashes; new rows use per-tenant chains. Staging DB can be reset for a clean per-tenant chain if needed.
 - main-protection ruleset (ID 18567129) at full strictness with required_status_check rule (5 checks). PR2's merge will use the relax/restore payloads from docs/runbooks/ci.md §5 (corrected schema: `{"context": "..."}` only — no `integration_id`, no `do_not_enforce_on_create`).
 - 30-4 and 30-5 will be marked done in docs/remediation/30-60-90-day-plan.md after PR2 merges.
+
+---
+
+Task ID: 20-b (continuation — merge + remediation tracker update)
+Agent: Super Z (PR2 merge + remediation tracker finalization)
+Task: After PR #29 was opened and CI went 5/5 green + ADR-010 review posted (PASS-WITH-NITS), complete the merge via the relax/restore workflow (this time the ruleset ALREADY has the required_status_check rule from PR1, so the 5-rule payloads in docs/runbooks/ci.md §5 are correct as-is). Then update docs/remediation/30-60-90-day-plan.md to mark 30-4, 30-5, and the P0-3/P0-4/P0-5 findings as done.
+
+Work Log:
+- ADR-010 review session run on PR #29 diff (comment ID 4902398499, https://github.com/Thika-Management-Dz/clinic-saas/pull/29#issuecomment-4902398499). Outcome: ⚠️ PASS-WITH-NITS — MERGE-READY. 0 BLOCKs, 4 NITs (all non-blocking: hashtext::text cast unnecessary, concurrent test could use more INSERTs, set_tenant SECURITY DEFINER not yet needed, ci.md fix bundled into PR2 rather than separate docs PR — all accepted), 12 PASS, 3 N/A, 8 PR2-specific checks (A1-A8) all PASS. Same ADR-010 caveat as PR #28: author agent reviewing its own PR (no separate fresh-context session available). CI 5/5 green.
+- Merged PR #29 via the relax/restore workflow:
+  - Step 1 (RELAX): PUT /rulesets/18567129 with required_approving_review_count=0, require_code_owner_review=false, required_review_thread_resolution=false. The required_status_check rule (5 checks) was PRESERVED in the relax payload — this is the first PR merge using the corrected 5-rule payloads from docs/runbooks/ci.md §5. The rule stayed in place during the relax window, so CI had to stay green even during the brief relax.
+  - Step 2 (MERGE): PUT /pulls/29/merge with squash method. Merge SHA: 3074a64f5ac11bb3f0363aa327e01643746a16b8. Merged: True.
+  - Step 3 (RESTORE): PUT /rulesets/18567129 with the full 5-rule shape (pull_request with 1 approval + code-owner + thread resolution, required_status_checks with 5 checks, required_linear_history, deletion, non_fast_forward). Used the corrected schema ({"context": "..."} per check, no integration_id/do_not_enforce_on_create). API accepted.
+  - Step 4 (VERIFY): GET /rulesets/18567129 confirmed: enforcement=active, bypass_actors=[], pull_request with required_approving_review_count=1 + require_code_owner_review=true + required_review_thread_resolution=true, required_status_checks with all 5 checks (integration, lint, typecheck, test-scripts, gitleaks), required_linear_history, deletion, non_fast_forward. ALL CHECKS PASS.
+- Updated docs/remediation/30-60-90-day-plan.md:
+  - 30-4 marked done with PR #29.
+  - 30-5 marked done with PR #29.
+  - P0 findings table: "No CI/CD workflows" marked done with PR #28; "SQL injection pattern in withTenant helper" marked done with PR #29; "Audit log hash chain race condition" marked done with PR #29; "SECURITY DEFINER cross-tenant function" marked done with PR #29.
+  - P1 findings table: "No GitHub branch protection" updated to reflect the required_status_check rule (5 checks) added in PR #28; "No SECURITY.md" marked done with PR #28; "No secrets scanning automation" marked done with PR #28.
+
+Stage Summary:
+- PR2 (audit hash chain redesign + withTenant fix + set_tenant function) MERGED as PR #29 (squash SHA 3074a64f).
+- All 8 30-day blockers except 30-3 (dev DB cred rotation in SQL) are now CLOSED:
+  - 30-1 done (PR #28): CI workflow
+  - 30-2 done (PR #28): branch protection with required_status_check (5 checks)
+  - 30-3 pending: dev DB cred rotation in 001_roles.sql (2-hour follow-up PR — the only remaining 30-day item)
+  - 30-4 done (PR #29): withTenant UUID regex validation
+  - 30-5 done (PR #29): per-tenant hash chain + advisory lock
+  - 30-6 done (PR #28): SECURITY.md
+  - 30-7 done (PR #28): gitleaks pre-commit + CI
+  - 30-8 done (PR #28): Orthanc image pinned to 26.6.1
+- P0 blockers from the critical review:
+  - P0-1 (no CI) — done (PR #28)
+  - P0-2 (dev DB creds in plaintext) — partial (rotation procedure documented in PR #26; SQL file itself still has literals — 30-3 is the follow-up)
+  - P0-3 (withTenant SQL injection) — done (PR #29)
+  - P0-4 (audit hash chain race) — done (PR #29)
+  - P0-5 (SECURITY DEFINER cross-tenant) — done (PR #29)
+  - P0-6 (app_user nullable tenant_id) — deferred to Phase 5 (90-4)
+- main-protection ruleset (ID 18567129) at FULL STRICTNESS: 5 rules (pull_request with 1 approval + code-owner + thread resolution, required_status_checks with 5 checks, required_linear_history, deletion, non_fast_forward). Verified with fresh GET after PR2 merge. bypass_actors=[], enforcement=active.
+- The relax/restore payloads in docs/runbooks/ci.md §5 are now CORRECT (schema fix landed in PR #29) and PROVEN (used successfully for PR2's merge — the first PR merge with the required_status_check rule in place). Future PR merges can use these payloads verbatim.
+- CI is now the machine-enforced merge gate (per ADR-012). The ADR-010 manual review session is the second layer. Both gates passed for PR1 + PR2.
+- The project is now ready for Phase 5 (Authentication & Tenant Interceptor) per the roadmap — PR2's set_tenant(uuid) function is the foundation the TenantInterceptor will build on. The operator should be asked what's next.

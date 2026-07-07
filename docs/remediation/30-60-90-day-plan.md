@@ -16,8 +16,8 @@ Per the critical review: "The 30-day items are blocking — do not start Phase 5
 | 30-7 | Add gitleaks pre-commit hook + enable GitHub secret scanning. | 1 hour | done | PR #28 (Task 20-a) — `.pre-commit-config.yaml` (gitleaks-docker hook @v8.30.1) for local hygiene + `.github/workflows/gitleaks.yml` (gitleaks binary v8.30.1 run directly with SHA256 verification, no GITLEAKS_LICENSE needed) for the CI machine gate |
 | 30-8 | Pin Orthanc docker image to a specific version (not `:latest`). | 15 min | done | PR #28 (Task 20-a) — `docker-compose.yml` changed `orthancteam/orthanc:latest` → `orthancteam/orthanc:26.6.1` (latest stable at PR time) |
 | 30-3 | Rotate dev DB creds: read from env in `001_roles.sql` via `:var` substitution; add fail-fast in `main.ts` if `NODE_ENV=production` and `DATABASE_URL` contains `dev_password`. | 2 hours | pending | Deferred to a small PR after PR1+PR2 (the dev creds are dev-only; staging/prod use `.env.staging` per ADR-011) |
-| 30-4 | Fix `withTenant`: add UUID regex validation before string interpolation; document the Phase 5 `TenantInterceptor` must use parameterized `set_tenant()` function. | 1 hour | in-progress | PR #29 (Task 20-b) — `withTenant` in helpers.ts now validates UUID regex before interpolation; comment documents that Phase 5's TenantInterceptor MUST use `set_tenant(uuid)` instead |
-| 30-5 | Fix audit log hash chain: per-tenant `prev_hash` lookup (`WHERE tenant_id = NEW.tenant_id`); add `LOCK TABLE` or advisory lock to serialize per-tenant INSERTs. | 4 hours | in-progress | PR #29 (Task 20-b) — `compute_audit_hash_curr()` redesigned with per-tenant `WHERE tenant_id = NEW.tenant_id` lookup + `pg_advisory_xact_lock(hashtext(NEW.tenant_id::text))` serialization. Also fixes P0-5 (SECURITY DEFINER cross-tenant coupling) |
+| 30-4 | Fix `withTenant`: add UUID regex validation before string interpolation; document the Phase 5 `TenantInterceptor` must use parameterized `set_tenant()` function. | 1 hour | done | PR #29 (Task 20-b) — `withTenant` in helpers.ts now validates UUID regex before interpolation; comment documents that Phase 5's TenantInterceptor MUST use `set_tenant(uuid)` instead |
+| 30-5 | Fix audit log hash chain: per-tenant `prev_hash` lookup (`WHERE tenant_id = NEW.tenant_id`); add `LOCK TABLE` or advisory lock to serialize per-tenant INSERTs. | 4 hours | done | PR #29 (Task 20-b) — `compute_audit_hash_curr()` redesigned with per-tenant `WHERE tenant_id = NEW.tenant_id` lookup + `pg_advisory_xact_lock(hashtext(NEW.tenant_id::text))` serialization. Also fixes P0-5 (SECURITY DEFINER cross-tenant coupling) |
 
 **Total 30-day effort:** ~5 days for a single engineer. None of it is architecturally hard — it is process hygiene.
 
@@ -61,15 +61,15 @@ These are findings from the critical review that are not explicitly in the secti
 
 | Finding | Severity | Status | PR / Notes |
 |---------|----------|--------|------------|
-| No CI/CD workflows | P0 | pending | 30-1 (PR1) |
+| No CI/CD workflows | P0 | done | PR #28 (Task 20-a, 30-1) — `.github/workflows/ci.yml` with 4 jobs + `.github/workflows/gitleaks.yml` |
 | Dev DB credentials committed in plaintext | P0 | partial | 30-3 — partially addressed by PR #26 (rotation procedure documented in neon-staging.md); SQL file itself still has literals |
-| SQL injection pattern in `withTenant` helper | P0 | pending | 30-4 (PR2) |
-| Audit log hash chain race condition | P0 | pending | 30-5 (PR2) |
-| SECURITY DEFINER cross-tenant function | P0 | pending | 30-5 (PR2) — per-tenant redesign fixes both |
+| SQL injection pattern in `withTenant` helper | P0 | done | PR #29 (Task 20-b, 30-4) — UUID regex validation + comment documenting Phase 5 must use `set_tenant(uuid)` |
+| Audit log hash chain race condition | P0 | done | PR #29 (Task 20-b, 30-5) — per-tenant `prev_hash` lookup + `pg_advisory_xact_lock` serialization |
+| SECURITY DEFINER cross-tenant function | P0 | done | PR #29 (Task 20-b, 30-5) — per-tenant redesign fixes both P0-4 and P0-5 |
 | `app_user` nullable `tenant_id` without super_admin login flow | P0 | deferred | 90-4 (Phase 5) — the schema comment acknowledges the trap; Phase 5's login flow must solve it |
-| No GitHub branch protection (visible in repo) | P1 | done | Main-protection ruleset (ID 18567129) verified at full strictness in Task 19-b; PR1 will add the CI-check requirement |
-| No `SECURITY.md` | P1 | pending | 30-6 (PR1) |
-| No secrets scanning automation | P1 | pending | 30-7 (PR1) |
+| No GitHub branch protection (visible in repo) | P1 | done | Main-protection ruleset (ID 18567129) at full strictness with required_status_check rule (5 checks: integration, lint, typecheck, test-scripts, gitleaks) added in PR #28 (Task 20-a, 30-2). Verified with fresh GET. |
+| No `SECURITY.md` | P1 | done | PR #28 (Task 20-a, 30-6) — `SECURITY.md` at repo root |
+| No secrets scanning automation | P1 | done | PR #28 (Task 20-a, 30-7) — `.pre-commit-config.yaml` (gitleaks-docker) + `.github/workflows/gitleaks.yml` (gitleaks binary v8.30.1) |
 | DPIA is a stub | P1 | pending | 90-5 — operator + legal |
 | `hash_curr` stored as TEXT (hex) not BYTEA | P1 | deferred | 60-1 (JC-18-4) |
 | No request size limits on Fastify | P1 | pending | 60-4 |
