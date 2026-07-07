@@ -94,11 +94,17 @@ docker compose up -d postgres
 docker compose ps   # postgres should show "healthy"
 
 # Apply the same setup CI does (001_roles.sql runs automatically on first
-# init via docker-entrypoint-initdb.d):
+# init via docker-entrypoint-initdb.d — the .sh wrapper passes passwords
+# via psql :var substitution; see docker-compose.yml):
 pnpm --filter @clinic-saas/db db:migrate
 docker compose exec postgres psql -U postgres -d clinic_dev \
   -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/../sql/003_force_rls.sql
 # (Or, equivalently:)
+PGPASSWORD=dev_postgres_password psql -h localhost -U postgres -d clinic_dev \
+  -v ON_ERROR_STOP=1 \
+  -v app_role_password='dev_password' \
+  -v ops_password='dev_ops_password' \
+  -f packages/db/sql/001_roles.sql
 PGPASSWORD=dev_postgres_password psql -h localhost -U postgres -d clinic_dev \
   -v ON_ERROR_STOP=1 -f packages/db/sql/003_force_rls.sql
 PGPASSWORD=dev_postgres_password psql -h localhost -U postgres -d clinic_dev \
@@ -177,7 +183,9 @@ level (not per-step) so they're available to both `pnpm db:migrate` and
 - **`role app_role does not exist`** — `001_roles.sql` didn't run. Check
   that the file path is correct (`packages/db/sql/001_roles.sql`) and that
   the `psql -f` step ran with `-v ON_ERROR_STOP=1` (it would have failed
-  the job if 001_roles.sql had an error).
+  the job if 001_roles.sql had an error). Note: 001_roles.sql now uses psql
+  `:var` substitution — the CI step must pass `-v app_role_password=...`
+  and `-v ops_password=...` (see the integration job step).
 - **`relation "clinic" does not exist`** — migrations didn't run. Check
   that `pnpm --filter @clinic-saas/db db:migrate` succeeded and that
   `MIGRATION_DATABASE_URL` is set.

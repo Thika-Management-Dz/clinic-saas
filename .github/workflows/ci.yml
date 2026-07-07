@@ -179,13 +179,17 @@ jobs:
 
       # Apply 001_roles.sql as the postgres superuser (the only role that
       # exists at first init). Creates ops_superuser (BYPASSRLS) + app_role
-      # (NOBYPASSRLS) with the dev defaults. Idempotent IF the roles don't
-      # exist; in CI the container is fresh, so this always creates them.
+      # (NOBYPASSRLS). The SQL file uses psql :var substitution for
+      # passwords — no plaintext credentials in the file itself (30-3).
+      # Idempotent IF the roles don't exist; in CI the container is fresh,
+      # so this always creates them.
       - name: Apply 001_roles.sql (creates ops_superuser + app_role)
         run: |
           PGPASSWORD=dev_postgres_password psql \
             -h localhost -U postgres -d clinic_dev \
             -v ON_ERROR_STOP=1 \
+            -v app_role_password='dev_password' \
+            -v ops_password='dev_ops_password' \
             -f packages/db/sql/001_roles.sql
 
       # Run drizzle-kit migrations — creates the 8 Phase 4 tables with

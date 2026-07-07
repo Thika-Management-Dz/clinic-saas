@@ -8,15 +8,25 @@
 -- as the POSTGRES_USER (postgres superuser), so it can create roles and
 -- grant privileges.
 --
--- To re-run manually on an existing volume:
+-- To re-run manually on an existing volume (docker-compose):
 --   docker compose exec postgres \
---     psql -U postgres -d clinic_dev -f /docker-entrypoint-initdb.d/001_roles.sql
+--     psql -U postgres -d clinic_dev \
+--     -v app_role_password="$APP_ROLE_PASSWORD" \
+--     -v ops_password="$OPS_PASSWORD" \
+--     -f /sql/001_roles.sql
+--
+-- To re-run from the host (no docker):
+--   PGPASSWORD=dev_postgres_password psql \
+--     -h localhost -U postgres -d clinic_dev \
+--     -v app_role_password='dev_password' \
+--     -v ops_password='dev_ops_password' \
+--     -f packages/db/sql/001_roles.sql
 --
 -- CRITICAL RLS GUARANTEE (ADR-001 §mandatory configuration point 4):
 --   app_role has NOBYPASSRLS. Only ops_superuser has BYPASSRLS.
 --   The application NEVER connects as ops_superuser.
 --   Verify after first init:
---     psql postgresql://postgres:dev_postgres_password@localhost:5432/clinic_dev \
+--     psql postgresql://postgres:$POSTGRES_PASSWORD@localhost:5432/clinic_dev \
 --       -c '\du app_role'
 --   The attributes column must NOT list BYPASSRLS.
 --   If it does, RLS is broken and every tenant's data is readable by the app.
@@ -33,13 +43,13 @@
 -- the tables are owned by ops_superuser; with FORCE ROW LEVEL SECURITY,
 -- the owner is subject to RLS policies, but BYPASSRLS lets ops_superuser
 -- ignore them for admin operations.
-CREATE ROLE ops_superuser WITH LOGIN PASSWORD 'dev_ops_password' BYPASSRLS;
+CREATE ROLE ops_superuser WITH LOGIN PASSWORD :'ops_password' BYPASSRLS;
 
 -- app_role: the application's DB role. NOBYPASSRLS is MANDATORY — RLS
 -- policies are enforced for every query the app issues. The app connects
 -- as app_role via DATABASE_URL. Tenant isolation depends on this single
 -- attribute.
-CREATE ROLE app_role WITH LOGIN PASSWORD 'dev_password' NOBYPASSRLS;
+CREATE ROLE app_role WITH LOGIN PASSWORD :'app_role_password' NOBYPASSRLS;
 
 -- =============================================================================
 -- 2. Grant app_role access to the database and schema
@@ -79,8 +89,8 @@ GRANT USAGE ON SCHEMA public TO app_role;
 -- apply to objects created BY ops_superuser, which requires ops_superuser
 -- to be able to create objects in the first place).
 --
--- Tracked as part of P0-2 / 30-3 (dev DB cred rotation in this file) —
--- the rotation PR should preserve both GRANTs.
+-- Previously tracked as P0-2 / 30-3. Resolved: this file now uses psql
+-- :var substitution for passwords (no plaintext credentials).
 GRANT CREATE ON DATABASE clinic_dev TO ops_superuser;
 GRANT USAGE, CREATE ON SCHEMA public TO ops_superuser;
 
