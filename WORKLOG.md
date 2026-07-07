@@ -1028,3 +1028,36 @@ Stage Summary:
 - The relax/restore payloads in docs/runbooks/ci.md §5 are now CORRECT (schema fix landed in PR #29) and PROVEN (used successfully for PR2's merge — the first PR merge with the required_status_check rule in place). Future PR merges can use these payloads verbatim.
 - CI is now the machine-enforced merge gate (per ADR-012). The ADR-010 manual review session is the second layer. Both gates passed for PR1 + PR2.
 - The project is now ready for Phase 5 (Authentication & Tenant Interceptor) per the roadmap — PR2's set_tenant(uuid) function is the foundation the TenantInterceptor will build on. The operator should be asked what's next.
+
+---
+
+Task ID: 21
+Agent: Super Z (PR3 — dev DB cred rotation, 30-3 closure)
+Task: Close the last remaining 30-day remediation item (30-3): replace hardcoded dev passwords in 001_roles.sql with psql :var substitution, add production fail-fast in main.ts. This unblocks Phase 5.
+
+Work Log:
+- Read 001_roles.sql, ci.yml, docker-compose.yml, main.ts, 30-60-90-day-plan.md, WORKLOG, AGENTS.md, ADR-010, ai-agent-pr-review.md, ci.md to understand current state.
+- Modified packages/db/sql/001_roles.sql: replaced `PASSWORD 'dev_ops_password'` with `PASSWORD :'ops_password'` and `PASSWORD 'dev_password'` with `PASSWORD :'app_role_password'`. Updated re-run instructions and verification query comment. Updated P0-2/30-3 tracking note. All GRANTs from PR #28 preserved.
+- Created packages/db/sql/001_roles.sh (NEW, executable): docker-entrypoint-initdb.d wrapper that reads APP_ROLE_PASSWORD and OPS_PASSWORD env vars and passes them to psql via -v flags. Uses ${VAR:?...} fail-fast syntax.
+- Updated docker-compose.yml: added APP_ROLE_PASSWORD and OPS_PASSWORD env vars (dev defaults). Changed volume mount from 001_roles.sql to 001_roles.sh (docker-entrypoint-initdb.d) + 001_roles.sql (/sql/). Updated header comment with new re-run command.
+- Updated .github/workflows/ci.yml: the "Apply 001_roles.sql" step now passes -v app_role_password='dev_password' and -v ops_password='dev_ops_password' to psql. Updated comment.
+- Added production fail-fast in apps/api/src/main.ts: assertNoDevCredentialsInProduction() throws at bootstrap if NODE_ENV=production and DATABASE_URL contains dev_password, dev_ops_password, or dev_postgres_password. Defense-in-depth against misconfigured production deployments.
+- Updated docs/runbooks/ci.md: local repro section now shows -v flags for 001_roles.sql re-run. Troubleshooting note updated for :var substitution.
+- Self-verification: pnpm lint 8/8 PASS (1 known pre-existing warning), pnpm typecheck 8/8 PASS, test-scripts 22/22 PASS.
+- Opened PR #31 (branch agent/21-30-3-dev-cred-rotation). CI went 5/5 green (integration validates the psql :var flow end-to-end — the integration job creates roles with the substituted passwords, runs drizzle migrations, applies all SQL files, and passes 21 Vitest tests).
+- ADR-010 review session run (comment ID 4905753416): ✅ PASS — MERGE-READY. 0 BLOCKs, 0 NITs. 15 standard checks + 6 PR-specific checks all PASS. Author-agent caveat noted.
+- Merged PR #31 via relax/restore workflow:
+  - Step 1 (RELAX): PUT /rulesets/18567129 with review requirements relaxed, required_status_checks preserved (5 checks).
+  - Step 2 (MERGE): PUT /pulls/31/merge with squash method. Merge SHA: 168307f2fa07e0b5cb6ffde6aeb5cf9064c5a2a2. Merged: True.
+  - Step 3 (RESTORE): PUT /rulesets/18567129 with full 5-rule strictness. Verified: enforcement=active, bypass_actors=[], 5 rules correct.
+- Updated docs/remediation/30-60-90-day-plan.md: 30-3 marked done with PR #31. P0-2 "Dev DB credentials committed in plaintext" changed from partial to done.
+
+Stage Summary:
+- **ALL 8 THIRTY-DAY BLOCKERS ARE NOW DONE** (30-1 through 30-8). The 30-day window is FULLY CLOSED. The project is clear to start Phase 5 (Authentication & Tenant Interceptor).
+- P0-2 (dev DB creds in plaintext) is now fully done (was partial — SQL file literals removed, production fail-fast added).
+- 001_roles.sql no longer contains any plaintext credentials — uses psql :var substitution.
+- docker-compose.yml uses a shell wrapper (001_roles.sh) that passes passwords from env vars.
+- CI passes dev values via -v flags (the SQL file itself has no literals).
+- Production fail-fast in main.ts catches misconfigured DATABASE_URL at boot.
+- main-protection ruleset (ID 18567129) at FULL STRICTNESS. Verified with fresh GET after merge.
+- PR #31 (squash SHA 168307f2) is the fourth and final 30-day PR (after #28, #29, #30).
