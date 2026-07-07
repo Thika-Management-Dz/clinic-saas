@@ -299,28 +299,12 @@ curl -s -X PUT \
         "type": "required_status_checks",
         "parameters": {
           "strict_required_status_checks_policy": false,
-          "do_not_enforce_on_create": false,
           "required_status_checks": [
-            {
-              "context": "integration",
-              "integration_id": null
-            },
-            {
-              "context": "lint",
-              "integration_id": null
-            },
-            {
-              "context": "typecheck",
-              "integration_id": null
-            },
-            {
-              "context": "test-scripts",
-              "integration_id": null
-            },
-            {
-              "context": "gitleaks",
-              "integration_id": null
-            }
+            {"context": "integration"},
+            {"context": "lint"},
+            {"context": "typecheck"},
+            {"context": "test-scripts"},
+            {"context": "gitleaks"}
           ]
         }
       },
@@ -383,28 +367,12 @@ curl -s -X PUT \
         "type": "required_status_checks",
         "parameters": {
           "strict_required_status_checks_policy": false,
-          "do_not_enforce_on_create": false,
           "required_status_checks": [
-            {
-              "context": "integration",
-              "integration_id": null
-            },
-            {
-              "context": "lint",
-              "integration_id": null
-            },
-            {
-              "context": "typecheck",
-              "integration_id": null
-            },
-            {
-              "context": "test-scripts",
-              "integration_id": null
-            },
-            {
-              "context": "gitleaks",
-              "integration_id": null
-            }
+            {"context": "integration"},
+            {"context": "lint"},
+            {"context": "typecheck"},
+            {"context": "test-scripts"},
+            {"context": "gitleaks"}
           ]
         }
       },

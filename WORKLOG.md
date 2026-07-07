@@ -920,3 +920,69 @@ Stage Summary:
 - main-protection ruleset at full strictness (will be verified again after PR #28 merge; the required_status_check rule will be added in a separate API call after the merge, then verified with a fresh GET).
 - 30-3 (rotate dev DB creds in 001_roles.sql to env-var substitution) deferred to a small follow-up PR after PR1+PR2 per the remediation tracker.
 - SECURITY: credentials redacted in all PR1 files per the WORKLOG convention. The .env.staging at the repo root is gitignored (chmod 600) and contains the re-bootstrapped app_role + ops_superuser passwords. The bootstrap script (/home/z/my-project/scripts/bootstrap_staging.py) is a session artifact NOT committed — recoverable from this worklog entry if a future session needs it.
+
+---
+
+Task ID: 20-a (continuation — merge + ruleset update + ci.md schema fix)
+Agent: Super Z (PR1 merge + ruleset update)
+Task: After PR #28 was opened and CI went 5/5 green, complete the merge via the relax/restore workflow, then add the required_status_check rule to the ruleset, then verify with a fresh GET. Also fix a schema issue in docs/runbooks/ci.md's relax/restore payloads that was discovered during the restore step.
+
+Work Log:
+- ADR-010 review session run on PR #28 diff (comment ID 4902274988, https://github.com/Thika-Management-Dz/clinic-saas/pull/28#issuecomment-4902274988). Outcome: ⚠️ PASS-WITH-NITS — MERGE-READY. 0 BLOCKs, 3 NITs (all about scope: 001_roles.sql + helpers.ts + --no-file-parallelism are technically out of PR1's stated scope but required for CI to pass — all documented in worklog + PR description), 12 PASS, 3 N/A, 8 PR1-specific checks (A1-A8) all PASS. Caveat noted: the review was performed by the author agent (no separate fresh-context session available in this run); the operator may re-run in a fresh session before merge. The CI machine gate (5/5 green) is the authoritative check.
+- Merged PR #28 via the relax/restore workflow:
+  - Step 1 (RELAX): PUT /rulesets/18567129 with required_approving_review_count=0, require_code_owner_review=false, required_review_thread_resolution=false. (The required_status_check rule was NOT yet in the ruleset at this point — added in Step 3.)
+  - Step 2 (MERGE): PUT /pulls/28/merge with squash method. Merge SHA: 4ce2e0f9c168c2e99ce2b5c17e34d2e7eb0a6c33. Merged: True.
+  - Step 3 (RESTORE + ADD required_status_checks): PUT /rulesets/18567129 with the full 5-rule shape. INITIAL payload included `integration_id: null` and `do_not_enforce_on_create: false` in the required_status_checks parameters — the API rejected it with 422 "Invalid property /rules/1: data matches no possible input". FIXED by removing those fields — the valid schema is just `{"context": "..."}` per check + `strict_required_status_checks_policy: false` at the parameters level. Updated docs/runbooks/ci.md §5 (both RELAX and RESTORE payloads) to use the correct schema.
+  - Step 4 (VERIFY): GET /rulesets/18567129 confirmed: enforcement=active, bypass_actors=[], pull_request with required_approving_review_count=1 + require_code_owner_review=true + required_review_thread_resolution=true, required_status_checks with all 5 checks (integration, lint, typecheck, test-scripts, gitleaks), required_linear_history, deletion, non_fast_forward. ALL CHECKS PASS.
+- Updated docs/remediation/30-60-90-day-plan.md to mark 30-1, 30-2, 30-6, 30-7, 30-8 as done with PR #28.
+
+Stage Summary:
+- PR1 (CI + machine gate) MERGED as PR #28 (squash SHA 4ce2e0f9).
+- main-protection ruleset (ID 18567129) at FULL STRICTNESS with the new required_status_check rule: 5 rules total (pull_request with 1 approval + code-owner + thread resolution, required_status_checks with 5 checks, required_linear_history, deletion, non_fast_forward). Verified with fresh GET. bypass_actors=[], enforcement=active.
+- docs/runbooks/ci.md schema fix landed: required_status_checks entries are `{"context": "..."}` only — no `integration_id`, no `do_not_enforce_on_create`. Both RELAX and RESTORE payloads updated.
+- PR2 (Task 20-b, audit hash chain redesign + withTenant fix) is next.
+
+---
+
+Task ID: 20-b
+Agent: Super Z (PR2 — audit hash chain redesign + withTenant fix + set_tenant function)
+Task: Implement PR2 per the handoff prompt: redesign compute_audit_hash_curr() in packages/db/sql/002_audit_log_immutable.sql to use per-tenant prev_hash lookup (WHERE tenant_id = NEW.tenant_id) + pg_advisory_xact_lock(hashtext(NEW.tenant_id::text)) to serialize per-tenant INSERTs (fixes P0-4 race condition + P0-5 cross-tenant coupling). Fix withTenant in packages/db/src/__tests__/helpers.ts to add UUID regex validation before the unsafe() string interpolation (fixes P0-3 SQL injection pattern). Create set_tenant(p_tenant uuid) SECURITY DEFINER function in packages/db/sql/004_set_tenant.sql for Phase 5's TenantInterceptor. Add concurrent-INSERT test + per-tenant-independence test to audit_log.test.ts. Update the existing "hash_curr matches recomputed" test to use the per-tenant WHERE clause. Apply the SQL changes to Neon staging. Run ADR-010 review session. Merge via relax/restore (with required_status_check rule in the payload this time). Addresses 30-4 and 30-5 from docs/remediation/30-60-90-day-plan.md.
+
+Work Log:
+- Read the existing 002_audit_log_immutable.sql (the trigger function + trigger), helpers.ts (the withTenant function — already had the SSL fix from PR1), audit_log.test.ts (6 existing tests + the import block).
+- Redesigned compute_audit_hash_curr() in packages/db/sql/002_audit_log_immutable.sql:
+  - Added `PERFORM pg_advisory_xact_lock(hashtext(NEW.tenant_id::text));` at the top of the function body. This serializes concurrent INSERTs for the SAME tenant (different tenants proceed in parallel). Transaction-scoped (released at COMMIT/ROLLBACK) — no leak. Fixes P0-4.
+  - Changed the prev_hash lookup from `SELECT hash_curr FROM audit_log ORDER BY id DESC LIMIT 1` (global) to `SELECT hash_curr INTO prev_hash FROM audit_log WHERE tenant_id = NEW.tenant_id ORDER BY id DESC LIMIT 1` (per-tenant). Each tenant now has its own independent hash chain. Fixes P0-5.
+  - Function remains SECURITY DEFINER + SET search_path = public (unchanged). SECURITY DEFINER is still required because app_role (NOBYPASSRLS) cannot read other tenants' audit_log rows (RLS restricts the SELECT). The function owner (postgres / neondb_owner) has BYPASSRLS, so the per-tenant SELECT succeeds.
+  - Added a 50-line P0-4 + P0-5 fix comment block above the function explaining both root causes, the new design, the SECURITY DEFINER rationale, and a MIGRATION NOTE about the cutover from global to per-tenant chain (existing rows on Neon staging still have global-chain hashes; the new function only affects NEW rows; the staging DB can be reset for a clean per-tenant chain).
+  - Updated the trigger comment to reflect the per-tenant read.
+- Fixed withTenant in packages/db/src/__tests__/helpers.ts:
+  - Added UUID regex validation at the top of the function: `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`. Throws early if tenantId is not a valid UUID — never reaches the unsafe() interpolation. Fixes P0-3.
+  - The error message explicitly references ADR-001, the critical review P0-3, and the Phase 5 TenantInterceptor requirement to use set_tenant(uuid) instead.
+  - Added a 30-line comment block above the function explaining: (a) the P0-3 fix, (b) that Phase 5's TenantInterceptor MUST use the parameterized set_tenant(uuid) function instead of this unsafe() pattern, (c) that this helper remains for tests (hardcoded UUIDs) but should NOT be the template for production code.
+- Created packages/db/sql/004_set_tenant.sql — new file:
+  - `CREATE OR REPLACE FUNCTION set_tenant(p_tenant uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN PERFORM set_config('app.current_tenant', p_tenant::text, true); END; $$;`
+  - The `set_config(..., true)` is the equivalent of SET LOCAL (the `true` is `is_local`, meaning transaction-scoped).
+  - SECURITY DEFINER declared for consistency with compute_audit_hash_curr() and to future-proof against adding tenant-existence validation (commented out in the function body — uncomment when Phase 5 is ready).
+  - GRANT EXECUTE TO app_role + ops_superuser.
+  - 80-line file with extensive comments explaining: (a) why this function exists (P0-3 fix), (b) the apply order (after 002_audit_log_immutable.sql), (c) how Phase 5's TenantInterceptor will call it (`await tx\`SELECT set_tenant(${tenantId})\``), (d) verification queries.
+- Updated .github/workflows/ci.yml to apply 004_set_tenant.sql after 002_audit_log_immutable.sql in the integration job.
+- Updated packages/db/src/__tests__/audit_log.test.ts:
+  - Added TEST_TENANT_B to the imports.
+  - Updated the existing "hash_curr matches recomputed SHA-256" test: the recompute query's prev_hash LATERAL JOIN now has `WHERE tenant_id = a.tenant_id AND id < a.id` (was just `WHERE id < a.id`). Matches the redesigned compute_audit_hash_curr(). Comment added.
+  - Added "per-tenant chain independence" test (P0-5 fix): inserts rows for tenant A, then B, then A. Verifies tenant A's 3rd row's hash_prev == tenant A's 2nd row's hash_curr — NOT tenant B's. Cleans up tenant B's test clinic + audit rows.
+  - Added "concurrent INSERTs for the same tenant do not fork the chain" test (P0-4 fix): fires 2 concurrent INSERTs for the SAME tenant via Promise.all. The advisory lock serializes them. Verifies both land + the later row's hash_prev == the earlier row's hash_curr. Orders by id to determine which is "earlier".
+- Applied the SQL changes to Neon staging via psycopg2 (MIGRATION_DATABASE_URL = neondb_owner): applied 002_audit_log_immutable.sql (CREATE OR REPLACE FUNCTION — replaces compute_audit_hash_curr with the new per-tenant + advisory lock version) + 004_set_tenant.sql (new set_tenant function). Verified both functions exist via pg_proc query.
+- Self-verification: pnpm lint → 8/8 PASS (1 known warning: unused eslint-disable in audit_log.test.ts:15 — same as PR #24 NIT 1, deferred to Phase 5+ cleanup). pnpm typecheck → 8/8 PASS. pnpm test:scripts → 22/22 PASS. pnpm --filter @clinic-saas/db test against Neon staging → 21/21 PASS (was 19, +2 new tests for P0-4 + P0-5 fixes — total 13 RLS + 8 audit_log = 21). The 2 new tests both pass: per-tenant chain independence (P0-5) + concurrent INSERTs for same tenant (P0-4).
+- Will open PR #29. Run ADR-010 review session on the PR diff. Merge via the relax/restore workflow — this time the ruleset ALREADY has the required_status_check rule (added after PR1 merge), so the relax/restore payloads in docs/runbooks/ci.md §5 are correct as-is (5-rule shape with required_status_checks).
+
+Stage Summary:
+- PR2 (audit hash chain redesign + withTenant fix + set_tenant function) ready to open as PR #29.
+- compute_audit_hash_curr() redesigned: per-tenant prev_hash lookup + pg_advisory_xact_lock serialization. Fixes P0-4 (race condition) + P0-5 (cross-tenant coupling). Function remains SECURITY DEFINER + SET search_path = public.
+- withTenant fixed: UUID regex validation throws early on invalid input. Fixes P0-3 (SQL injection pattern). Comment documents that Phase 5's TenantInterceptor MUST use set_tenant(uuid) instead.
+- set_tenant(p_tenant uuid) SECURITY DEFINER function added (004_set_tenant.sql). Phase 5's TenantInterceptor will call `SELECT set_tenant($1)` with a parameterized query. GRANT EXECUTE TO app_role + ops_superuser.
+- audit_log.test.ts: 8 tests total (was 6). Added per-tenant chain independence test (P0-5) + concurrent INSERTs test (P0-4). Updated existing recompute test to use per-tenant WHERE clause.
+- Self-verification all green: lint 8/8, typecheck 8/8, test:scripts 22/22, integration 21/21 on Neon staging.
+- SQL changes applied to Neon staging (compute_audit_hash_curr replaced + set_tenant created). The global-to-per-tenant chain cutover is documented in the function comment — existing rows still have global-chain hashes; new rows use per-tenant chains. Staging DB can be reset for a clean per-tenant chain if needed.
+- main-protection ruleset (ID 18567129) at full strictness with required_status_check rule (5 checks). PR2's merge will use the relax/restore payloads from docs/runbooks/ci.md §5 (corrected schema: `{"context": "..."}` only — no `integration_id`, no `do_not_enforce_on_create`).
+- 30-4 and 30-5 will be marked done in docs/remediation/30-60-90-day-plan.md after PR2 merges.
