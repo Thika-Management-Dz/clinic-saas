@@ -10,14 +10,14 @@ Per the critical review: "The 30-day items are blocking — do not start Phase 5
 
 | # | Fix | Effort | Status | PR / Notes |
 |---|-----|--------|--------|------------|
-| 30-1 | Add `.github/workflows/ci.yml` with lint+typecheck+test+integration (Postgres service container). Pin actions to SHA, not tag. | 1 day | pending | PR1 (next session) |
-| 30-2 | Add branch protection requiring CI green + 1 review before merge to main. | 30 min | pending | PR1 (next session) — partly done: main-protection ruleset (ID 18567129) already requires 1 approval + code-owner + thread resolution; PR1 will add the CI check requirement |
+| 30-1 | Add `.github/workflows/ci.yml` with lint+typecheck+test+integration (Postgres service container). Pin actions to SHA, not tag. | 1 day | in-progress | PR1 (#28, Task 20-a) — `.github/workflows/ci.yml` added with 4 jobs (lint, typecheck, test-scripts, integration), actions pinned to SHA, Postgres 17 service container with 001_roles + drizzle migrate + 003_force_rls + 002_audit_log_immutable setup |
+| 30-2 | Add branch protection requiring CI green + 1 review before merge to main. | 30 min | in-progress | PR1 (#28, Task 20-a) — main-protection ruleset (ID 18567129) already requires 1 approval + code-owner + thread resolution; PR1 adds the `required_status_check` rule (5 checks: integration, lint, typecheck, test-scripts, gitleaks) via a separate API call after merge |
+| 30-6 | Write `SECURITY.md` with vulnerability disclosure policy and contact. | 1 hour | in-progress | PR1 (#28, Task 20-a) — `SECURITY.md` at repo root with GitHub Security Advisories channel, response SLA table (48h ack, 7d P0, 30d P1, 60d P2, 90d P3), ANPDP 5-day SLA reference, secret hygiene section |
+| 30-7 | Add gitleaks pre-commit hook + enable GitHub secret scanning. | 1 hour | in-progress | PR1 (#28, Task 20-a) — `.pre-commit-config.yaml` (gitleaks-docker hook @v8.30.1) for local hygiene + `.github/workflows/gitleaks.yml` (gitleaks-action @v3.0.0 pinned to SHA) for the CI machine gate |
+| 30-8 | Pin Orthanc docker image to a specific version (not `:latest`). | 15 min | in-progress | PR1 (#28, Task 20-a) — `docker-compose.yml` changed `orthancteam/orthanc:latest` → `orthancteam/orthanc:26.6.1` (latest stable at PR time) |
 | 30-3 | Rotate dev DB creds: read from env in `001_roles.sql` via `:var` substitution; add fail-fast in `main.ts` if `NODE_ENV=production` and `DATABASE_URL` contains `dev_password`. | 2 hours | pending | Deferred to a small PR after PR1+PR2 (the dev creds are dev-only; staging/prod use `.env.staging` per ADR-011) |
 | 30-4 | Fix `withTenant`: add UUID regex validation before string interpolation; document the Phase 5 `TenantInterceptor` must use parameterized `set_tenant()` function. | 1 hour | pending | PR2 (next session) |
 | 30-5 | Fix audit log hash chain: per-tenant `prev_hash` lookup (`WHERE tenant_id = NEW.tenant_id`); add `LOCK TABLE` or advisory lock to serialize per-tenant INSERTs. | 4 hours | pending | PR2 (next session) — also fixes P0-5 (SECURITY DEFINER cross-tenant coupling) |
-| 30-6 | Write `SECURITY.md` with vulnerability disclosure policy and contact. | 1 hour | pending | PR1 (next session) |
-| 30-7 | Add gitleaks pre-commit hook + enable GitHub secret scanning. | 1 hour | pending | PR1 (next session) |
-| 30-8 | Pin Orthanc docker image to a specific version (not `:latest`). | 15 min | pending | PR1 (next session) |
 
 **Total 30-day effort:** ~5 days for a single engineer. None of it is architecturally hard — it is process hygiene.
 

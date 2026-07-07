@@ -49,6 +49,41 @@ CREATE ROLE app_role WITH LOGIN PASSWORD 'dev_password' NOBYPASSRLS;
 GRANT CONNECT ON DATABASE clinic_dev TO app_role;
 GRANT USAGE ON SCHEMA public TO app_role;
 
+-- ops_superuser needs CREATE on schema public AND on the database to run
+-- drizzle migrations. Two reasons:
+--
+--   1. drizzle-kit migrate (v0.30+) runs `CREATE SCHEMA IF NOT EXISTS
+--      "drizzle"` for its __drizzle_migrations bookkeeping table. CREATE
+--      SCHEMA requires CREATE on the DATABASE (not just on a schema).
+--      Without this, drizzle-kit fails with
+--      "permission denied for database clinic_dev".
+--
+--   2. The migration SQL itself (packages/db/migrations/0000_initial.sql)
+--      runs `CREATE TABLE ... IN public`, `CREATE INDEX ...`, `CREATE
+--      POLICY ...`. Postgres 15+ revoked the default
+--      CREATE-on-public-to-PUBLIC grant, so without an explicit
+--      `GRANT CREATE ON SCHEMA public`, ops_superuser cannot create
+--      tables in the public schema.
+--
+-- Both grants are required. The bug was never caught before because the
+-- operator always ran tests against Neon staging (where neondb_owner, the
+-- DB owner, runs migrations per JC-18-5 — and the DB owner has CREATE on
+-- both the database and the public schema by default). Local docker-
+-- compose dev with a fresh volume was silently broken; CI exposed it.
+--
+-- On Neon staging these GRANTs are no-ops (neondb_owner already has these
+-- privileges as the DB owner, and the GRANTs are idempotent).
+--
+-- This is also a prerequisite for the ALTER DEFAULT PRIVILEGES FOR
+-- ROLE ops_superuser statements in §4 below (those default privileges only
+-- apply to objects created BY ops_superuser, which requires ops_superuser
+-- to be able to create objects in the first place).
+--
+-- Tracked as part of P0-2 / 30-3 (dev DB cred rotation in this file) —
+-- the rotation PR should preserve both GRANTs.
+GRANT CREATE ON DATABASE clinic_dev TO ops_superuser;
+GRANT USAGE, CREATE ON SCHEMA public TO ops_superuser;
+
 -- =============================================================================
 -- 3. Grant DML privileges on existing tables
 -- =============================================================================

@@ -1,0 +1,40 @@
+# .pre-commit-config.yaml
+#
+# Local hygiene hooks for the clinic-saas repo. Install with:
+#   pip install pre-commit        # or: brew install pre-commit
+#   pre-commit install            # wires .git/hooks/pre-commit
+#   pre-commit install --hook-type commit-msg   # for conventional-commit check (optional)
+#   pre-commit run --all-files    # one-shot run on the whole repo
+#
+# This is local hygiene. The CI machine gate at .github/workflows/gitleaks.yml
+# is the authoritative check — it runs on every PR regardless of whether the
+# author has pre-commit installed. This local hook catches secrets BEFORE the
+# commit lands in git history (where it's expensive to remove — see
+# SECURITY.md "Secret hygiene").
+#
+# Added in PR #28 (Task 20-a) per docs/remediation/30-60-90-day-plan.md 30-7.
+
+repos:
+  # gitleaks — detect hardcoded secrets in staged files.
+  # Uses the gitleaks-docker hook variant so the operator doesn't need Go
+  # installed locally — only Docker (which is already required for
+  # docker-compose.yml). Operators without Docker can swap this for the
+  # `gitleaks` (language: golang) hook variant.
+  # The version is pinned to v8.30.1 (latest stable at time of this PR).
+  # Update via `pre-commit autoupdate`.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks-docker
+        name: Detect hardcoded secrets (gitleaks)
+
+  # Conventional Commits enforcement (optional but recommended).
+  # Catches commit messages that don't match feat|fix|chore|docs|refactor|perf|test|build|ci.
+  # Disabled by default — uncomment to enable. The PR template's
+  # self-verification checklist is the authoritative gate.
+  # - repo: https://github.com/compilerla/conventional-pre-commit
+  #   rev: v4.0.0
+  #   hooks:
+  #     - id: conventional-pre-commit
+  #       stages: [commit-msg]
+  #       args: [feat, fix, chore, docs, refactor, perf, test, build, ci]
