@@ -18,12 +18,16 @@
 #   docker compose down               # stop (keeps volumes)
 #   docker compose down -v            # stop + DELETE all data (reset)
 #
-# The first `docker compose up -d` auto-runs packages/db/sql/001_roles.sql
-# inside the postgres container (mounted to /docker-entrypoint-initdb.d/).
-# This creates the ops_superuser (BYPASSRLS) and app_role (NOBYPASSRLS)
-# roles. To re-run the roles SQL on an existing volume:
+# The first `docker compose up -d` auto-runs 001_roles.sh inside the
+# postgres container (mounted to /docker-entrypoint-initdb.d/). The
+# wrapper passes passwords via psql :var substitution so 001_roles.sql
+# itself contains no plaintext credentials. This creates ops_superuser
+# (BYPASSRLS) and app_role (NOBYPASSRLS). To re-run on an existing volume:
 #   docker compose exec postgres \
-#     psql -U postgres -d clinic_dev -f /docker-entrypoint-initdb.d/001_roles.sql
+#     psql -U postgres -d clinic_dev \
+#     -v app_role_password="$APP_ROLE_PASSWORD" \
+#     -v ops_password="$OPS_PASSWORD" \
+#     -f /sql/001_roles.sql
 
 services:
   postgres:
@@ -43,13 +47,21 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev_postgres_password
       POSTGRES_DB: clinic_dev
+      # Passwords for the DB roles created by 001_roles.sql.
+      # Passed to psql via :var substitution by 001_roles.sh.
+      # Dev-only defaults; staging/prod use .env.staging per ADR-011.
+      APP_ROLE_PASSWORD: dev_password
+      OPS_PASSWORD: dev_ops_password
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Auto-run the roles SQL on first init (when the data dir is empty).
-      # Read-only mount so the container cannot modify the source file.
-      - ./packages/db/sql/001_roles.sql:/docker-entrypoint-initdb.d/001_roles.sql:ro
+      # 001_roles.sh is a wrapper that passes passwords via psql :var
+      # substitution so 001_roles.sql itself contains no plaintext creds.
+      # The .sql file is mounted to /sql/ for the wrapper to reference.
+      - ./packages/db/sql/001_roles.sh:/docker-entrypoint-initdb.d/001_roles.sh:ro
+      - ./packages/db/sql/001_roles.sql:/sql/001_roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d clinic_dev"]
       interval: 5s
