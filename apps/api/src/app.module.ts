@@ -18,8 +18,10 @@ import { Module } from '@nestjs/common';
 
 import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 
 @Module({
+  imports: [AuthModule],
   controllers: [HealthController],
   providers: [HealthService],
 })

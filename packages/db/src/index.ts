@@ -1,10 +1,8 @@
 // packages/db/src/index.ts
 //
-// Public API for the @clinic-saas/db package. All cross-package imports
-// MUST go through this file (enforced by eslint-plugin-import
-// no-internal-modules per Blueprint §7.4).
-//
-// Phase 3 scaffold: empty. Real exports (db client, schema re-exports) land
-// in Phase 4 (Local Database & RLS Foundation) per Roadmap v2.1 §4.
+// Public API for the @clinic-saas/db package.
+// Cross-package imports MUST go through this file (enforced by eslint
+// no-restricted-imports per Blueprint §7.4).
 
-export {};
+export { db, sql } from './db.js';
+export * from './schema/index.js';

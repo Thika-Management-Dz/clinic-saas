@@ -21,6 +21,15 @@
 //   - role_inheritance  (global — no RLS)
 //   - user_role         (tenant-scoped)
 //   - audit_log         (tenant-scoped, append-only)
+//
+// Phase 5 tables (Better Auth — per ADR-004):
+//   - user              (auth — NOT tenant-scoped, no RLS)
+//   - session           (auth — NOT tenant-scoped, no RLS)
+//   - account           (auth — NOT tenant-scoped, no RLS)
+//   - verification      (auth — NOT tenant-scoped, no RLS)
+//   - organization      (auth — maps to clinic/tenant)
+//   - member            (auth — user↔organization membership)
+//   - invitation        (auth — org invitation)
 
 export * from './clinic';
 export * from './app_user';
@@ -30,3 +39,4 @@ export * from './role_privilege';
 export * from './role_inheritance';
 export * from './user_role';
 export * from './audit_log';
+export * from './auth';

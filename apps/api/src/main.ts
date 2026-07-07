@@ -8,6 +8,7 @@
 // app.current_tenant). Phase 7 adds Sentry + PostHog integrations.
 // Phase 13 adds CSP + EgressGuard interceptors.
 
+import { RequestMethod } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -54,6 +55,13 @@ async function bootstrap(): Promise<void> {
     AppModule,
     new FastifyAdapter({ logger: true }),
   );
+
+  // Global prefix: all NestJS routes are mounted under /api.
+  // The root GET (health check) is excluded so it stays at /.
+  // Per Roadmap v2.1 §5.2.1: auth routes become /api/auth/*.
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: '/', method: RequestMethod.GET }],
+  });
 
   const port = Number.parseInt(process.env.PORT ?? '3001', 10);
   await app.listen(port, '0.0.0.0');

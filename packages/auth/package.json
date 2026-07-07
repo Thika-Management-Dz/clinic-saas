@@ -10,10 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-auth": "^1.6.0"
+    "@clinic-saas/db": "workspace:*",
+    "better-auth": "^1.6.0",
+    "drizzle-orm": "^0.40.0"
   },
   "devDependencies": {
     "@clinic-saas/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
     "typescript": "^6.0.3"
   }
 }
