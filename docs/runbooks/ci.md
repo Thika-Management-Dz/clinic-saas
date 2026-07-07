@@ -43,11 +43,27 @@ Node.js 24.18.0 + pnpm 11.10.0 (matches `package.json` `engines` and
 
 ### `.github/workflows/gitleaks.yml` — secret scanning
 
-Triggers: same as CI. Runs the
-`gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` (v3.0.0)
-on the full PR diff (with `fetch-depth: 0` so history is available). Uses
-the default gitleaks ruleset — no `GITLEAKS_LICENSE` is set, so the action
-falls back to the open-source rules bundled with the gitleaks binary.
+Triggers: same as CI. **Downloads the MIT-licensed gitleaks binary (v8.30.1)
+directly** and runs it against the PR diff (or the latest commit on push).
+No third-party action wrapper, no `GITLEAKS_LICENSE` required.
+
+Why not `gitleaks/gitleaks-action`? The gitleaks-action wrapper (v2.0.0+)
+requires a `GITLEAKS_LICENSE` secret for repos that belong to a GitHub
+Organization (per the README at
+<https://github.com/gitleaks/gitleaks-action>). This repo belongs to the
+`Thika-Management-Dz` org, so the action would fail without a license.
+The license is free but requires a Google-form signup at gitleaks.io —
+operator action that can't be done by an AI agent. Running the gitleaks
+binary directly is more transparent, has no future licensing risk, and
+uses the same default ruleset the action uses.
+
+The gitleaks binary is pinned to v8.30.1 with SHA256 verification
+(`551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`,
+from the official checksums.txt at
+<https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt>).
+Bumping the version should be a deliberate choice — update both the
+`GITLEAKS_VERSION` env var AND the `GITLEAKS_SHA256` in the workflow in
+the same PR.
 
 A finding fails the `gitleaks` check, which is a `required_status_check`
 in the main-protection ruleset (ID 18567129) after PR #28. See §5 for the
@@ -190,10 +206,13 @@ expensive to remove — see `SECURITY.md` "Secret hygiene").
 
 ### CI: `.github/workflows/gitleaks.yml`
 
-Runs the `gitleaks-action` on every PR/push. Uses the default gitleaks
-ruleset (no `GITLEAKS_LICENSE` is set — the open-source rules are
-sufficient for this project). A finding fails the `gitleaks` check, which
-is a required_status_check in the main-protection ruleset (see §5).
+Runs the **MIT-licensed gitleaks binary (v8.30.1) directly** on every
+PR/push. The binary is downloaded with SHA256 verification in the workflow
+itself — no third-party action wrapper, no `GITLEAKS_LICENSE` required.
+Uses the default gitleaks ruleset (the same one the gitleaks-action uses).
+A finding fails the `gitleaks` check, which is a `required_status_check`
+in the main-protection ruleset (ID 18567129) after PR #28. See §1 above
+for the rationale on running the binary directly vs. using the action.
 
 ### Custom rules
 

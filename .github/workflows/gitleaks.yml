@@ -1,30 +1,32 @@
 # .github/workflows/gitleaks.yml
 #
-# gitleaks GitHub Action — the machine-enforced secret-scanning gate.
+# gitleaks secret-scanning workflow — the machine-enforced secret-scanning gate.
 #
-# Runs on every pull_request and on every push to main. Scans the full diff
-# (for PRs) or the latest commit (for pushes) for hardcoded secrets using the
-# gitleaks default ruleset (extensible via .gitleaks.toml in the repo root
-# if needed in the future).
+# Runs on every pull_request and on every push to main. Downloads the
+# MIT-licensed gitleaks binary (v8.30.1) directly and runs it against the
+# PR diff (or the latest commit on push). No third-party action wrapper, no
+# `GITLEAKS_LICENSE` required.
+#
+# Why not gitleaks/gitleaks-action?
+#   The gitleaks-action wrapper (v2.0.0+) requires a `GITLEAKS_LICENSE` secret
+#   for repositories that belong to a GitHub Organization (per the README at
+#   https://github.com/gitleaks/gitleaks-action). This repo belongs to the
+#   Thika-Management-Dz org, so the action would fail without a license.
+#   The license is free but requires a Google-form signup at gitleaks.io —
+#   operator action that can't be done by an AI agent. Running the gitleaks
+#   binary directly is more transparent, has no future licensing risk, and
+#   uses the same default ruleset the action uses.
 #
 # This is the CI-side counterpart to .pre-commit-config.yaml (local hygiene).
 # Per SECURITY.md "Secret hygiene": secrets caught here block merge.
 #
-# The action is pinned to SHA (not tag) per the critical review §9.1 30-1
-# ("Pin actions to SHA, not tag"). SHA is from gitleaks-action v3.0.0:
-#   e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
+# The "gitleaks" check name (set via the job's `name:` field) is a
+# required_status_check in the main-protection ruleset (ID 18567129) after
+# PR #28 lands. See docs/runbooks/ci.md §5 for the relax/restore payloads.
 #
-# A finding on a PR fails the "gitleaks" check, which is a required_status_check
-# in the main-protection ruleset (ID 18567129) after PR #28 lands. See
-# docs/runbooks/ci.md for the relax/restore payloads.
-#
-# Note on the GITLEAKS_LICENSE secret: gitleaks-action v3+ requires a
-# Gitleaks Team license (paid) for the latest ruleset updates. Without it,
-# the action falls back to the open-source rules bundled with the gitleaks
-# binary, which is sufficient for this project. We do NOT set
-# GITLEAKS_LICENSE; if a future audit finds the open-source rules
-# insufficient, the operator can add a license secret at
-# https://github.com/Thika-Management-Dz/clinic-saas/settings/secrets/actions
+# gitleaks version: 8.30.1 (latest stable at time of PR #28).
+# SHA256 checksum: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+# (from https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt)
 
 name: gitleaks
 
@@ -53,11 +55,113 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-          # fetch full history so gitleaks can scan all commits in the PR diff
+          # fetch full history so gitleaks can scan the PR's commits
+          # (gitleaks uses git log to walk commits)
           fetch-depth: 0
-      - name: gitleaks-action
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          # The default GITHUB_TOKEN is sufficient for PR scanning on a
-          # public repo. No GITLEAKS_LICENSE is set — see file header.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Download the gitleaks binary directly. No action wrapper, no license.
+      # Pinned to v8.30.1 with SHA256 verification.
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          GITLEAKS_TARBALL="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_TARBALL}"
+          GITLEAKS_SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+          cd /tmp
+          curl -fsSL -o "${GITLEAKS_TARBALL}" "${GITLEAKS_URL}"
+          echo "${GITLEAKS_SHA256}  ${GITLEAKS_TARBALL}" | sha256sum -c -
+          tar xzf "${GITLEAKS_TARBALL}" gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # Run gitleaks. The `detect` command walks git history.
+      # --redact: redact secret values in the output (so a finding doesn't
+      #   leak the actual secret into the Actions log).
+      # --report-format json --report-path: write findings to a file for
+      #   pretty-printing in the next step.
+      # --log-opts: limit the scan to the PR's commits only (not the full
+      #   repo history) on pull_request events. On push to main, scan the
+      #   latest commit only.
+      - name: Run gitleaks
+        id: gitleaks
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gitleaks-out
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Scan all commits in the PR (base...HEAD).
+            # `--git log-opts=--no-merges origin/main...HEAD` excludes merge
+            # commits and limits the scan to commits in the PR branch.
+            gitleaks detect \
+              --source . \
+              --redact \
+              --report-format json \
+              --report-path /tmp/gitleaks-out/report.json \
+              --log-opts="--no-merges origin/${{ github.base_ref }}...HEAD" \
+              --verbose || GITLEAKS_EXIT=$?
+          else
+            # push to main: scan the latest commit only
+            gitleaks detect \
+              --source . \
+              --redact \
+              --report-format json \
+              --report-path /tmp/gitleaks-out/report.json \
+              --log-opts="-1" \
+              --verbose || GITLEAKS_EXIT=$?
+          fi
+          # gitleaks exits 1 on findings, 0 on clean. Capture the exit code
+          # so we can pretty-print the findings in the next step before
+          # failing the job.
+          echo "gitleaks_exit=${GITLEAKS_EXIT:-0}" >> "$GITHUB_OUTPUT"
+
+      # Pretty-print findings (if any) so the Actions log shows what was
+      # caught before the job fails. The secrets are already redacted by
+      # --redact, so this is safe.
+      - name: Report findings (if any)
+        if: steps.gitleaks.outputs.gitleaks_exit != '0'
+        run: |
+          echo "::error::gitleaks found hardcoded secrets in the PR diff."
+          echo ""
+          echo "Findings (secrets redacted):"
+          echo "================================"
+          python3 - <<'PY'
+          import json, sys
+          try:
+              with open('/tmp/gitleaks-out/report.json') as f:
+                  findings = json.load(f)
+          except (FileNotFoundError, json.JSONDecodeError):
+              print("  (no report file — gitleaks may have failed before scanning)")
+              sys.exit(0)
+          if not findings:
+              print("  (gitleaks exited non-zero but report is empty — check the log)")
+              sys.exit(0)
+          for i, fnd in enumerate(findings, 1):
+              print(f"  Finding #{i}:")
+              print(f"    Rule:        {fnd.get('RuleID', '?')}")
+              print(f"    Description: {fnd.get('Description', '?')}")
+              print(f"    File:        {fnd.get('File', '?')}:{fnd.get('StartLine', '?')}")
+              print(f"    Commit:      {fnd.get('Commit', '?')[:12]}")
+              print(f"    Secret:      {fnd.get('Secret', '(redacted)')}")
+              print(f"    Match:       {fnd.get('Match', '(redacted)')}")
+              print("")
+          PY
+          echo "================================"
+          echo ""
+          echo "If any of these are REAL secrets, rotate them immediately at the"
+          echo "source (Neon dashboard, GitHub settings, etc.) and follow"
+          echo "docs/runbooks/breach-response.md if they protect patient data."
+          echo "If any are false positives, add a targeted allowlist entry to"
+          echo ".gitleaks.toml (NOT a global regex suppress) and document the"
+          echo "FP in the PR description."
+          exit 1
+
+      # Upload the report as an artifact (retained 14 days) for offline
+      # inspection if needed.
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: gitleaks-report
+          path: /tmp/gitleaks-out/
+          retention-days: 14
