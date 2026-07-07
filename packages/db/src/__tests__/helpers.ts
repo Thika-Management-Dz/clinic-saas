@@ -39,7 +39,11 @@ export function connectAsApp() {
   }
   return postgres(url, {
     max: 1,
-    ssl: 'require',
+    // SSL is required for Neon staging (sslmode=require in the URL) but
+    // NOT for the docker-compose Postgres container (no SSL configured).
+    // Respect the URL's sslmode param so the same helpers work in both
+    // environments + in CI (which uses the docker container).
+    ssl: url.includes('sslmode=require') ? 'require' : false,
     idle_timeout: 5,
     connect_timeout: 10,
   });
@@ -57,7 +61,8 @@ export function connectAsOwner() {
   }
   return postgres(url, {
     max: 1,
-    ssl: 'require',
+    // See connectAsApp() for the SSL-conditional rationale.
+    ssl: url.includes('sslmode=require') ? 'require' : false,
     idle_timeout: 5,
     connect_timeout: 10,
   });
