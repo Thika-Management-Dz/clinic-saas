@@ -16,8 +16,8 @@
     "db:seed": "tsx src/seed.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --no-file-parallelism",
+    "test:watch": "vitest --no-file-parallelism"
   },
   "dependencies": {
     "drizzle-orm": "^0.40.0",
