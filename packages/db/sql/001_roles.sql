@@ -49,6 +49,23 @@ CREATE ROLE app_role WITH LOGIN PASSWORD 'dev_password' NOBYPASSRLS;
 GRANT CONNECT ON DATABASE clinic_dev TO app_role;
 GRANT USAGE ON SCHEMA public TO app_role;
 
+-- ops_superuser needs CREATE on schema public to run drizzle migrations
+-- (CREATE TABLE, CREATE INDEX, CREATE POLICY, etc.). Postgres 15+ revoked
+-- the default CREATE-on-public-to-PUBLIC grant, so without this explicit
+-- GRANT, migrations fail with "permission denied for database clinic_dev"
+-- when MIGRATION_DATABASE_URL points at ops_superuser (which is the case
+-- on docker-compose local dev and in CI).
+-- On Neon staging this GRANT is a no-op — neondb_owner (not ops_superuser)
+-- runs migrations there per JC-18-5, and the database owner has CREATE on
+-- schema public by default.
+-- This GRANT is also a prerequisite for the ALTER DEFAULT PRIVILEGES FOR
+-- ROLE ops_superuser statements in §4 below (those default privileges only
+-- apply to objects created BY ops_superuser, which requires ops_superuser
+-- to be able to create objects in the first place).
+-- Tracked as part of P0-2 / 30-3 (dev DB cred rotation in this file) —
+-- the rotation PR should preserve this GRANT.
+GRANT USAGE, CREATE ON SCHEMA public TO ops_superuser;
+
 -- =============================================================================
 -- 3. Grant DML privileges on existing tables
 -- =============================================================================
