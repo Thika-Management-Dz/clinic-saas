@@ -8,7 +8,7 @@
 
 import { Module, Global } from '@nestjs/common';
 
-import { EgressGuard, createEgressFetch } from './egress.guard.js';
+import { EgressGuard } from './egress.guard.js';
 
 @Global()
 @Module({
