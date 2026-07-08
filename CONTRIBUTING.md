@@ -69,10 +69,13 @@ export class HealthController {
 }
 ```
 
-Enforcement is via code review + the `smoke` CI job (which boots the API
-via tsx and catches `undefined` deps at runtime). The pattern applies to
-all `@Injectable()`, `@Controller()`, `@Guard()`, `@Interceptor()`,
-`@Pipe()`, and `@Filter()` classes with constructor-injected params.
+Enforcement is layered: the **`clinic-saas/require-inject` ESLint rule**
+(catches violations at lint time — proactive), **code review** (second
+line of defense), and the **`smoke` CI job** (boots the API via tsx and
+catches `undefined` deps at runtime — reactive safety net). The pattern
+applies to all `@Injectable()`, `@Controller()`, `@Guard()`,
+`@Interceptor()`, `@Pipe()`, and `@Filter()` classes with
+constructor-injected params.
 
 ## Pull Requests
 

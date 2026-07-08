@@ -131,8 +131,10 @@ Before pushing a PR: `pnpm lint && pnpm typecheck && pnpm test` must be green.
   This is required for tsx/esbuild compatibility in dev mode — esbuild
   does not emit `emitDecoratorMetadata`, so implicit constructor
   injection is `undefined` at runtime without the explicit decorator.
-  Enforcement: code review + the `smoke` CI job (which boots the API
-  via tsx and catches `undefined` deps at runtime).
+  Enforcement: the `clinic-saas/require-inject` ESLint rule (catches
+  violations at lint time — proactive), code review (second line of
+  defense), and the `smoke` CI job (boots the API via tsx and catches
+  `undefined` deps at runtime — reactive safety net).
 
 ## Dental Module Rules [Blueprint §9.4]
 
