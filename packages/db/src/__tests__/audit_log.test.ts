@@ -12,7 +12,7 @@
 //   6. Hash chain integrity: recomputing SHA-256(prev || canonical_json(row))
 //      matches the stored hash_curr.
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 // Test files deal with dynamic postgres.js return types where strict type
 // safety is impractical. The DB queries themselves are type-checked at
 // runtime by postgres.js; the test assertions use vitest's expect() which
