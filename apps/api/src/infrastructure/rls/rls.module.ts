@@ -14,6 +14,7 @@ import { TenantInterceptor } from './tenant.interceptor.js';
 
 @Module({
   providers: [
+    TenantInterceptor,
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantInterceptor,

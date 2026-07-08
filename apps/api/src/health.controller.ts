@@ -3,13 +3,13 @@
 // Health check endpoint. GET / returns the health status JSON.
 // Per Roadmap v2.1 §3.6.4: 'GET / must return a 200'.
 
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 
 import { HealthService, type HealthStatus } from './health.service.js';
 
 @Controller()
 export class HealthController {
-  constructor(private readonly health: HealthService) {}
+  constructor(@Inject(HealthService) private readonly health: HealthService) {}
 
   @Get()
   check(): HealthStatus {

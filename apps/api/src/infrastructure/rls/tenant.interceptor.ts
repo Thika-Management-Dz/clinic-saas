@@ -34,6 +34,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Inject,
   Logger,
   SetMetadata,
 } from '@nestjs/common';
@@ -64,7 +65,7 @@ export const TenantExempt = () => SetMetadata(TENANT_EXEMPT_KEY, true);
 export class TenantInterceptor implements NestInterceptor {
   private readonly logger = new Logger(TenantInterceptor.name);
 
-  constructor(private readonly reflector: Reflector) {}
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context

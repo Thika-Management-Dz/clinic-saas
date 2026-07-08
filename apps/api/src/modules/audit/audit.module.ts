@@ -14,6 +14,7 @@ import { AuditInterceptor } from './audit.interceptor.js';
 
 @Module({
   providers: [
+    AuditInterceptor,
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
