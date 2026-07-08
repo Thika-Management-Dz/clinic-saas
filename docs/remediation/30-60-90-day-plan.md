@@ -35,7 +35,7 @@ Per the critical review: "The 60-day items should land before any external contr
 | 60-6 | Convert `audit_log.outcome` to enum; add CHECK constraints on `action`, `entity_type`. | 4 hours | pending | |
 | 60-7 | Add `role_inheritance` cycle prevention (recursive CTE in a BEFORE INSERT/UPDATE trigger). | 4 hours | pending | Also flagged as a Phase 4 NIT by Task 19-a (PR #20 review, comment 4899185938) |
 | 60-8 | Add CLA + cla-bot before accepting external contributions. | 1 day | deferred | Only needed before external contributors — bus factor = 1 means no external contributors yet |
-| 60-9 | Split `WORKLOG.md` into per-phase files in `docs/worklog/`. | 2 hours | pending | WORKLOG.md is now 846 lines after Task 19-b; ~30K tokens for an AI agent to read |
+| 60-9 | Split `WORKLOG.md` into per-phase files in `docs/worklog/`. | 2 hours | done | PR #34 (Task 22) — root `WORKLOG.md` reduced from 1,063 lines (~30K tokens) to 72 lines (~1.5K tokens) + 5 summarized phase archives under `docs/worklog/` (~8.9K tokens total). 70% token reduction. Cross-checked: all 18 critical follow-ups verified present in the new files. Original preserved at `git show f9192a5b:WORKLOG.md` |
 | 60-10 | Add Docker image scanning (trivy in CI). | 2 hours | pending | Builds on PR1's CI workflow |
 
 ## 90-day quality improvements
