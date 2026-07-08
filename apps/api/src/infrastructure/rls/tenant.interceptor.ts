@@ -7,7 +7,8 @@
 //   2. Opens a postgres.js transaction.
 //   3. Issues SELECT set_tenant($1) — PARAMETERIZED, never interpolated.
 //   4. Stores the transaction on the request for downstream services.
-//   5. Commits or rolls back after the handler completes.
+//   5. Runs the handler INSIDE the transaction (SET LOCAL is transaction-scoped).
+//   6. Commits or rolls back after the handler completes.
 //
 // CRITICAL (P0-3 fix from critical review §3.3):
 //   The set_tenant(uuid) function is SECURITY DEFINER (004_set_tenant.sql).
@@ -18,6 +19,12 @@
 //   Without SET LOCAL app.current_tenant, RLS policies return 0 rows
 //   for ALL tenant-scoped tables. This is the correct default — the app
 //   MUST set the tenant before querying tenant data.
+//
+// CRITICAL (transaction scope):
+//   SET LOCAL is transaction-scoped. The handler MUST run inside the
+//   same sql.begin() callback that calls set_tenant(). If the handler
+//   runs after the transaction closes, SET LOCAL is lost and RLS
+//   returns 0 rows for ALL tenant-scoped queries.
 
 import {
   Injectable,
@@ -35,7 +42,15 @@ import { sql } from '@clinic-saas/db';
 import { auth } from '@clinic-saas/auth';
 import type { FastifyRequest } from 'fastify';
 
-/** Paths that don't require tenant context. */
+/** Paths that don't require tenant context.
+ *
+ *  ASSUMPTION: All /api/auth/* routes are tenant-exempt because Better
+ *  Auth's built-in endpoints (sign-up, sign-in, sign-out, get-session)
+ *  operate on global (non-tenant-scoped) tables. The tenant context is
+ *  only needed for domain module endpoints that query tenant-scoped
+ *  tables. This assumption is correct per ADR-004 and the auth schema
+ *  design (auth tables are global, not tenant-scoped).
+ */
 const TENANT_EXEMPT_PATHS = ['/api/health', '/api/auth/', '/'];
 
 /**
@@ -82,29 +97,27 @@ export class TenantInterceptor implements NestInterceptor {
         }
 
         request.__tenantId = tenantId;
-        this.logger.debug(`Tenant context set: ${tenantId}`);
+        this.logger.debug('Tenant context set successfully');
 
-        // Wrap the handler in a postgres.js transaction with SET LOCAL.
+        // CRITICAL: The handler MUST run inside the sql.begin() callback.
+        // SET LOCAL is transaction-scoped — if the transaction closes
+        // before the handler runs, the tenant context is lost and RLS
+        // returns 0 rows for all tenant-scoped queries.
         return new Observable<unknown>((subscriber) => {
           void (async () => {
             try {
-              await sql.begin(async (t) => {
+              await sql.begin(async (tx) => {
                 // Store the transaction on the request for downstream services.
-                request.__tenantTx = t;
+                request.__tenantTx = tx;
 
                 // CRITICAL: Parameterized query — NEVER string interpolation.
                 // The set_tenant() function is SECURITY DEFINER.
                 // Per 004_set_tenant.sql and P0-3 fix.
-                await t`SELECT set_tenant(${tenantId})`;
-              });
-            } catch (err) {
-              subscriber.error(err);
-              return;
-            }
+                await tx`SELECT set_tenant(${tenantId})`;
 
-            // Run the NestJS handler. Downstream services use request.__tenantTx.
-            try {
-              await firstValueFrom(next.handle());
+                // Handler runs INSIDE the transaction so SET LOCAL is active.
+                await firstValueFrom(next.handle());
+              });
               subscriber.next(undefined);
               subscriber.complete();
             } catch (err) {
