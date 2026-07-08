@@ -30,6 +30,7 @@ group cancels superseded runs on the same ref.
 | `typecheck`    | `pnpm typecheck` (`tsc --noEmit` across all 8 workspaces)               | No  | 5 min   |
 | `test-scripts` | `bash tests/test-setup-workstation.sh` (22 bash tests for Phase 1 fix)  | No  | 5 min   |
 | `integration`  | Postgres 17 service container + drizzle migrations + FORCE RLS + audit immutability + 19 Vitest tests | Yes | 10 min  |
+| `smoke`        | Postgres 17 service container + drizzle migrations + FORCE RLS + audit immutability + set_tenant function + seed clinics + boot the NestJS API via tsx + run the Phase 5 auth smoke test (sign-up → /me → switch-tenant → /me → sign-out). Catches DI bugs + stale migrations that the other 4 jobs miss because none boot the API. Added in PR #39 per Task 24. | Yes | 10 min  |
 
 All third-party actions are pinned to commit SHAs (not tags) per the
 critical review §9.1 30-1:
@@ -116,6 +117,16 @@ export MIGRATION_DATABASE_URL=postgresql://ops_superuser:dev_ops_password@localh
 
 # Run the integration tests:
 pnpm --filter @clinic-saas/db test
+
+# Job 5: smoke — requires the same Postgres + the dev schema above
+# (apply 004_set_tenant.sql + db:seed in addition to the integration
+# setup), plus BETTER_AUTH_URL + BETTER_AUTH_SECRET env vars.
+PGPASSWORD=dev_postgres_password psql -h localhost -U postgres -d clinic_dev \
+  -v ON_ERROR_STOP=1 -f packages/db/sql/004_set_tenant.sql
+pnpm --filter @clinic-saas/db db:seed
+export BETTER_AUTH_URL=http://localhost:3001
+export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+bash tests/smoke/phase5-auth-smoke.sh
 ```
 
 ### Running integration tests against Neon staging instead
@@ -131,6 +142,10 @@ $EDITOR .env.staging   # fill in app_role + neondb_owner passwords
 set -a && . ./.env.staging && set +a
 pnpm --filter @clinic-saas/db test
 ```
+
+The smoke test (`tests/smoke/phase5-auth-smoke.sh`) also works against
+Neon staging with the same `.env.staging` — just run `bash
+tests/smoke/phase5-auth-smoke.sh` after `set -a && . ./.env.staging && set +a`.
 
 CI itself always uses the docker Postgres service container (not Neon) —
 this keeps CI hermetic and free of network dependencies.
@@ -312,7 +327,8 @@ curl -s -X PUT \
             {"context": "lint"},
             {"context": "typecheck"},
             {"context": "test-scripts"},
-            {"context": "gitleaks"}
+            {"context": "gitleaks"},
+            {"context": "smoke"}
           ]
         }
       },
@@ -331,8 +347,9 @@ curl -s -X PUT \
 
 The key changes from full strictness: `required_approving_review_count: 0`,
 `require_code_owner_review: false`, `required_review_thread_resolution:
-false`. The `required_status_checks` rule is KEPT (with all 5 checks) so CI
-must still pass before merge.
+false`. The `required_status_checks` rule is KEPT (with all 6 checks,
+including `smoke` added in PR #39 per Task 24) so CI must still pass
+before merge.
 
 ### Step 2 — Squash-merge the PR
 
@@ -380,7 +397,8 @@ curl -s -X PUT \
             {"context": "lint"},
             {"context": "typecheck"},
             {"context": "test-scripts"},
-            {"context": "gitleaks"}
+            {"context": "gitleaks"},
+            {"context": "smoke"}
           ]
         }
       },
@@ -415,8 +433,8 @@ Confirm ALL of:
   - `pull_request` with `required_approving_review_count: 1`,
     `require_code_owner_review: true`,
     `required_review_thread_resolution: true`
-  - `required_status_checks` with all 5 checks (`integration`, `lint`,
-    `typecheck`, `test-scripts`, `gitleaks`)
+  - `required_status_checks` with all 6 checks (`integration`, `lint`,
+    `typecheck`, `test-scripts`, `gitleaks`, `smoke`)
   - `required_linear_history`
   - `deletion`
   - `non_fast_forward`
@@ -476,6 +494,40 @@ adds the new CI job, and document the change in this runbook.
   - The Postgres service container didn't start (check the `services:`
     block health check).
 - Run locally: see §2.
+
+### "smoke" job fails
+
+- Read the smoke test output (`tests/smoke/phase5-auth-smoke.sh`). The
+  script logs each step with `[ PASS ]` / `[ FAIL ]` markers and prints
+  the last 20 lines of the API log on assertion failure.
+- Download the `smoke-api-log` artifact (uploaded on failure) for the
+  full API stdout/stderr — useful for diagnosing boot failures and
+  NestJS DI errors that don't surface in the smoke test's curl output.
+- Common causes:
+  - **API failed to boot** — usually a NestJS DI bug. The most common
+    patterns (caught by PR #37): exporting a provider that isn't in
+    `providers`, exporting a function (NestJS only exports classes),
+    or missing `@Inject(Token)` on a constructor parameter (esbuild
+    doesn't emit `emitDecoratorMetadata`, so implicit injection is
+    `undefined` at runtime — see [ADR-013](../adr/ADR-013-explicit-inject-decorators.md)).
+  - **Sign-up returned non-200** — usually a stale migration (e.g.
+    missing `organization.clinic_id` from PR #33, caught by PR #36) or
+    a missing `Origin` header (Better Auth's CSRF protection rejects
+    POSTs without it — `403 MISSING_OR_NULL_ORIGIN`).
+  - **`/me` returned 401 instead of 200** — usually the sign-up step
+    didn't persist the `Set-Cookie` to the cookie jar. Check that
+    `curl -c $COOKIE_JAR` is present on the sign-up request.
+  - **`switch-tenant` returned non-200** — usually the `organizationId`
+    isn't a valid UUID v4 (the DTO validates via `@IsUUID('4')`) or
+    the organization row's `clinic_id` FK is null (the TenantInterceptor
+    throws "Organization has no clinic_id mapping" — check that the
+    seed ran and the smoke-test org was inserted with a valid clinic_id).
+  - **Cleanup failed** — smoke-test rows are still in the DB. Inspect
+    via `psql ... -c "SELECT id,email FROM \"user\" WHERE email LIKE
+    '%clinic-saas-smoke%';"` and hard-DELETE them (acceptable for global
+    auth tables per AGENTS.md).
+- Run locally: see §2 (set DATABASE_URL, MIGRATION_DATABASE_URL,
+  BETTER_AUTH_URL, BETTER_AUTH_SECRET, then `bash tests/smoke/phase5-auth-smoke.sh`).
 
 ### "gitleaks" job fails
 

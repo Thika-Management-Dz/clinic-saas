@@ -22,6 +22,11 @@
 #                     001_roles.sql + drizzle migrations + 003_force_rls.sql
 #                     + 002_audit_log_immutable.sql, then Vitest suite
 #                     (RLS + audit_log + hash chain = 19 tests as of Phase 4).
+#   5. smoke        — boots the NestJS API via tsx + exercises the Phase 5
+#                     Better Auth flow end-to-end (sign-up → /me → switch-tenant
+#                     → /me → sign-out). Catches DI bugs + stale migrations
+#                     that the other 4 jobs miss because none boot the API.
+#                     Added in PR #39 per Task 24 (WORKLOG.md Task 24).
 #
 # All third-party actions are pinned to commit SHAs (not tags) per the
 # critical review §9.1 30-1: "Pin actions to SHA, not tag." This prevents
@@ -234,3 +239,121 @@ jobs:
       # DATABASE_URL is missing — per docs/conventions/testing.md.
       - name: Run integration tests (Vitest)
         run: pnpm --filter @clinic-saas/db test
+
+  # ─── smoke job ─────────────────────────────────────────────────────
+  # Boots the NestJS API via tsx and exercises the Phase 5 Better Auth
+  # flow end-to-end (sign-up → get-session → /me → switch-tenant →
+  # /me → sign-out). Catches two classes of bug that the other 4 jobs
+  # miss because none of them instantiate the NestJS DI container:
+  #   1. Stale Drizzle migrations (e.g. missing organization.clinic_id
+  #      from PR #33, caught manually in PR #36).
+  #   2. NestJS DI bugs (exported-but-not-provided modules, missing
+  #      @Inject(Token) decorators — esbuild doesn't emit
+  #      emitDecoratorMetadata, so implicit constructor injection is
+  #      undefined at runtime; caught manually in PR #37).
+  # See tests/smoke/phase5-auth-smoke.sh for the full assertion list
+  # and WORKLOG.md Task 23 for the root-cause analysis.
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: []
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dev_postgres_password
+          POSTGRES_DB: clinic_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clinic_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://app_role:dev_password@localhost:5432/clinic_dev
+      MIGRATION_DATABASE_URL: postgresql://ops_superuser:dev_ops_password@localhost:5432/clinic_dev
+      BETTER_AUTH_URL: http://localhost:3001
+      # Generated per-run via `openssl rand -base64 32` in the step below.
+      # BETTER_AUTH_SECRET is set in the "Generate auth secret" step.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.10.0
+          run_install: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Apply 001_roles.sql (creates ops_superuser + app_role)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -v app_role_password='dev_password' \
+            -v ops_password='dev_ops_password' \
+            -f packages/db/sql/001_roles.sql
+
+      - name: Run drizzle migrations
+        run: pnpm --filter @clinic-saas/db db:migrate
+
+      - name: Apply 003_force_rls.sql (FORCE RLS + grants to app_role)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/003_force_rls.sql
+
+      - name: Apply 002_audit_log_immutable.sql (audit immutability + hash chain + pgcrypto)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/002_audit_log_immutable.sql
+
+      - name: Apply 004_set_tenant.sql (set_tenant function for Phase 5)
+        run: |
+          PGPASSWORD=dev_postgres_password psql \
+            -h localhost -U postgres -d clinic_dev \
+            -v ON_ERROR_STOP=1 \
+            -f packages/db/sql/004_set_tenant.sql
+
+      - name: Seed clinics (needed for organization.clinic_id FK)
+        run: pnpm --filter @clinic-saas/db db:seed
+
+      - name: Generate BETTER_AUTH_SECRET
+        run: |
+          AUTH_SECRET="$(openssl rand -base64 32)"
+          echo "::add-mask::$AUTH_SECRET"
+          echo "BETTER_AUTH_SECRET=$AUTH_SECRET" >> "$GITHUB_ENV"
+
+      - name: Run Phase 5 auth smoke test
+        env:
+          SMOKE_API_LOG: /tmp/clinic-saas-smoke-api.log
+        run: bash tests/smoke/phase5-auth-smoke.sh
+
+      # Upload the API log as an artifact on failure so the operator
+      # can inspect what the API printed without re-running the job.
+      - name: Upload API log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: smoke-api-log
+          path: /tmp/clinic-saas-smoke-api.log
+          retention-days: 14
