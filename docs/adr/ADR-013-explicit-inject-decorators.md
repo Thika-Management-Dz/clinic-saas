@@ -6,7 +6,7 @@
 - **Supersedes:** none
 - **Superseded by:** none
 - **Decider:** Operator (AguHo)
-- **PR:** #39 (Task 24)
+- **PR:** #39 (Task 24 — original adoption); #41 (Task 25 — added ESLint enforcement)
 - **Related:** [ADR-004](./ADR-004.md) (Better Auth + Organization plugin), [ADR-002](./ADR-002.md) (modular monolith), WORKLOG.md Task 23 (root-cause analysis of the PR #37 DI bugs)
 
 ## Context
@@ -239,49 +239,74 @@ bootstrap.
 A custom ESLint rule could flag `constructor(private readonly X)`
 without `@Inject(X)`.
 
-**Partially adopted** — see "Compliance" below. A workable generic
-rule was not found in the ecosystem (`eslint-plugin-nestjs` is not
-maintained; `@nestjs/eslint-plugin` does not exist on npm). The
-convention is enforced via code review + the smoke CI job's runtime
-check. A future PR could add a custom rule if the manual enforcement
-proves insufficient.
+**Adopted in PR #41 (Task 25)** — see the "Compliance" section above.
+The rule `clinic-saas/require-inject` is registered in
+`packages/eslint-config/flat-config.js` and fires on every constructor
+in NestJS-decorated classes. A workable generic rule was not found in
+the ecosystem (`eslint-plugin-nestjs` is not maintained;
+`@nestjs/eslint-plugin` does not exist on npm), so the rule is
+project-local, defined in `packages/eslint-config/plugin.js`.
 
 ## Compliance
 
 ### Enforcement mechanisms
 
-1. **Code review** — reviewers should flag any new constructor with
-   injected params that lacks `@Inject(Token)`. The
-   [review-session runbook](../runbooks/ai-agent-pr-review.md) lists
-   this as a checklist item.
+1. **Custom ESLint rule** — `clinic-saas/require-inject` (added in PR #41
+   per Task 25). The rule is registered in
+   `packages/eslint-config/flat-config.js` and enabled whenever
+   `{ nest: true }` is passed to `createConfig()` (i.e. for `apps/api`
+   and `apps/worker`). It walks every `MethodDefinition[kind='constructor']`
+   in classes with a class-level decorator and flags any constructor
+   parameter that has a TypeScript type annotation but no `@Inject(Token)`
+   decorator and no request-scoped NestJS parameter decorator
+   (`@Req`, `@Res`, `@Body`, `@Query`, `@Param`, `@Headers`, `@Session`,
+   `@HostParam`, `@Ip`, `@UploadedFile`, `@UploadedFiles` — these are
+   resolved by the framework's router, not the DI container, so they
+   don't need `@Inject`). This is the **proactive** enforcement layer —
+   it catches the bug at lint time, before the code is committed.
 
-2. **The smoke CI job** — `tests/smoke/phase5-auth-smoke.sh` boots the
+   The rule lives at
+   [`packages/eslint-config/plugin.js`](../../packages/eslint-config/plugin.js)
+   (see the file's header comment for the full AST-walking rationale).
+   Per-line disable is possible via
+   `// eslint-disable-next-line clinic-saas/require-inject` (document
+   why in a comment); per-file disable via
+   `/* eslint-disable clinic-saas/require-inject */` (only for test
+   fixtures that intentionally exercise the broken pattern).
+
+2. **Code review** — reviewers should still flag any new constructor
+   with injected params that lacks `@Inject(Token)`. The
+   [review-session runbook](../runbooks/ai-agent-pr-review.md) lists
+   this as a checklist item. The ESLint rule is the first line of
+   defense; review is the second.
+
+3. **The smoke CI job** — `tests/smoke/phase5-auth-smoke.sh` boots the
    API via tsx and exercises the auth flow. If a provider's
    constructor injection is `undefined` at runtime, the smoke test
    fails immediately (the API either refuses to boot or 500's on the
-   first request). This is the reactive safety net.
+   first request). This is the **reactive** safety net — it catches
+   the bug after the code is written but before it reaches `main`.
 
-3. **Documentation** — `AGENTS.md` and `CONTRIBUTING.md` both
+4. **Documentation** — `AGENTS.md` and `CONTRIBUTING.md` both
    reference this ADR as the source of truth for the convention.
 
-### What was NOT adopted
+### Why a custom rule was needed
 
-- A custom ESLint rule. The `eslint-plugin-nestjs` package is
-  unmaintained (last publish 2022, doesn't support ESLint 9+ flat
-  config). Writing a custom rule would require either a separate
-  plugin package or inlining a `no-restricted-syntax` rule that
-  matches the AST pattern — but `no-restricted-syntax` can't easily
-  express "constructor parameter with a type annotation but no
-  `@Inject` decorator" because it would need to check the absence
-  of a sibling decorator node, which is not a restricted-syntax
-  pattern.
+The `eslint-plugin-nestjs` package is unmaintained (last publish
+2022, doesn't support ESLint 9+ flat config). The `@nestjs/eslint-plugin`
+does not exist on npm. ESLint's built-in `no-restricted-syntax` rule
+matches PRESENCE of a pattern, not ABSENCE — it cannot express
+"constructor parameter with a type annotation but WITHOUT an
+`@Inject` decorator" because that requires checking the absence of a
+sibling decorator node.
 
-  If a future contributor wants to add enforcement, the cleanest
-  approach is a custom plugin in `packages/eslint-config/` that
-  walks `MethodDefinition[kind='constructor'] > FormalParameters >
-  FormalParameter` and checks that any parameter with a
-  `TypeAnnotation` has an `@Inject` decorator (excluding params with
-  `@Req`, `@Res`, `@Body`, etc. which are request-scoped, not DI).
+The custom rule in `packages/eslint-config/plugin.js` solves this by
+walking the AST directly: it visits every `MethodDefinition` node
+with `kind === 'constructor'`, normalizes each parameter node
+(handling `TSParameterProperty`, `FormalParameter`, `Identifier`,
+`AssignmentPattern`, and `RestElement` shapes), and reports any
+parameter that has a type annotation but neither an `@Inject` nor a
+request-scoped decorator.
 
 ### Existing code
 
@@ -296,6 +321,11 @@ have explicit `@Inject`:
 The `audit.interceptor.ts` and `egress.guard.ts` use `new Logger(...)`
 directly (no DI) — they don't need `@Inject`.
 
+The `auth.controller.ts` `AuthController` class uses `@Req`, `@Res`,
+and `@Body` parameter decorators on its handler methods (not the
+constructor) — these are request-scoped, so the rule correctly
+exempts them.
+
 ## References
 
 - [esbuild FAQ: Metadata](https://esbuild.github.io/api/#metadata) —
@@ -304,8 +334,11 @@ directly (no DI) — they don't need `@Inject`.
   the official docs on constructor-based injection and `@Inject(Token)`.
 - [WORKLOG.md Task 23](../../WORKLOG.md) — root-cause analysis of the
   PR #37 DI bugs (esbuild + missing metadata).
-- [WORKLOG.md Task 24](../../WORKLOG.md) — this ADR + the smoke CI job
-  that catches DI bugs at runtime.
+- [WORKLOG.md Task 24](../../WORKLOG.md) — original adoption of this
+  ADR + the smoke CI job that catches DI bugs at runtime.
+- [WORKLOG.md Task 25](../../WORKLOG.md) — added the
+  `clinic-saas/require-inject` ESLint rule as the proactive enforcement
+  layer.
 - [ADR-004](./ADR-004.md) — Better Auth + Organization plugin (the
   source of the auth-related providers).
 - [ADR-002](./ADR-002.md) — modular monolith (the architecture that
@@ -313,3 +346,5 @@ directly (no DI) — they don't need `@Inject`.
 - [`packages/tsconfig/nestjs.json`](../../packages/tsconfig/nestjs.json) —
   the NestJS tsconfig that still has `emitDecoratorMetadata: true`
   (harmless under tsc; ignored by esbuild).
+- [`packages/eslint-config/plugin.js`](../../packages/eslint-config/plugin.js) —
+  the custom ESLint rule that enforces this ADR at lint time.

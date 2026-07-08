@@ -457,6 +457,15 @@ adds the new CI job, and document the change in this runbook.
 - Common causes: unused vars, `any` types, `ml-/mr-/pl-/pr-` Tailwind
   utilities, hardcoded user-visible strings (i18n rule not yet enabled in
   Phase 4 — comes in Phase 6).
+- The `clinic-saas/require-inject` rule (added in PR #41 per Task 25)
+  fires on every constructor in NestJS-decorated classes (`apps/api`,
+  `apps/worker`). If you see an error like `ADR-013: constructor
+  parameter "X" has a type annotation but no @Inject(Token) decorator`,
+  the fix is to add `@Inject(Token)` to the offending parameter —
+  implicit injection is `undefined` at runtime under tsx/esbuild. See
+  [ADR-013](../adr/ADR-013-explicit-inject-decorators.md) for the full
+  rationale. Request-scoped parameter decorators (`@Req`, `@Body`,
+  `@Query`, etc.) are correctly exempted.
 - Run locally: `pnpm lint`.
 
 ### "typecheck" job fails
