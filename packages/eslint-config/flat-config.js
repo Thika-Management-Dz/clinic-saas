@@ -15,6 +15,10 @@
 //   - eslint-import-resolver-typescript (TypeScript-aware resolver; required
 //     for the import plugin rules to fire on .ts files)
 //   - @next/eslint-plugin-next rules (when { next: true })
+//   - clinic-saas custom plugin (when { nest: true }) — currently exposes
+//     `clinic-saas/require-inject` enforcing ADR-013's explicit
+//     @Inject(Token) rule on NestJS constructor parameters. See
+//     ./plugin.js for the rule definition and full rationale.
 //   - globals (browser + node as appropriate)
 //   - ignores (.next/**, dist/**, coverage/**, node_modules/**)
 //
@@ -33,17 +37,19 @@
 // See the rule comment below and the Task 16 review comment on PR #10 for
 // the full analysis.
 //
-// NestJS-specific plugin rules are NOT included in this scaffold. The
-// official @nestjs/eslint-plugin does not exist on npm; the community
-// eslint-plugin-nestjs is not widely adopted. The base typescript-eslint
-// recommendedTypeChecked rules are sufficient for the Phase 3 scaffold.
-// NestJS-specific rules can be added in a follow-up if the operator wants
-// them (e.g. enforcing decorator metadata conventions).
+// NestJS-specific rules: the official `@nestjs/eslint-plugin` does not
+// exist on npm; the community `eslint-plugin-nestjs` is unmaintained
+// (last publish 2022, doesn't support ESLint 9+ flat config). Task 25
+// added a project-local `clinic-saas` plugin (./plugin.js) with a
+// `require-inject` rule that enforces ADR-013's explicit @Inject(Token)
+// pattern. The plugin is registered when `{ nest: true }` is passed.
 
 import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import-x';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+
+import { clinicSaaSPlugin } from './plugin.js';
 
 /**
  * @typedef {Object} CreateConfigOptions
@@ -191,12 +197,30 @@ export async function createConfig(opts = {}) {
     });
   }
 
-  // { nest: true } is accepted but currently a no-op. See header comment.
+  // NestJS profile: register the project-local `clinic-saas` plugin
+  // and enable the `require-inject` rule enforcing ADR-013. The rule
+  // is a no-op in non-NestJS packages (packages/db, packages/auth,
+  // apps/web) because they have no NestJS-managed classes — but we
+  // still gate the registration on `{ nest: true }` to keep the
+  // plugin's surface area explicit and avoid running AST walks
+  // against packages that don't need them.
+  //
+  // See ./plugin.js for the rule definition and ADR-013 for the
+  // architectural rationale.
   if (nest) {
-    // TODO: add NestJS-specific rules when a canonical plugin emerges.
-    // The base typescript-eslint recommendedTypeChecked rules already
-    // cover the most important NestJS linting surface (type safety,
-    // unused vars, etc.).
+    configs.push({
+      plugins: {
+        'clinic-saas': clinicSaaSPlugin,
+      },
+      rules: {
+        // ADR-013: every constructor-injected provider in a NestJS app
+        // MUST use an explicit @Inject(Token) decorator. Implicit
+        // injection is undefined at runtime under tsx/esbuild (no
+        // emitDecoratorMetadata). This is the proactive enforcement
+        // layer; the smoke CI job is the reactive safety net.
+        'clinic-saas/require-inject': 'error',
+      },
+    });
   }
 
   return configs;

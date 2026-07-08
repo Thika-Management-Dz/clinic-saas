@@ -5,10 +5,12 @@
   "type": "module",
   "main": "./flat-config.js",
   "exports": {
-    ".": "./flat-config.js"
+    ".": "./flat-config.js",
+    "./plugin": "./plugin.js"
   },
   "files": [
-    "flat-config.js"
+    "flat-config.js",
+    "plugin.js"
   ],
   "scripts": {},
   "peerDependencies": {
