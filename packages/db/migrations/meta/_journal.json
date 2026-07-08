@@ -15,6 +15,13 @@
       "when": 1783453407270,
       "tag": "0001_tense_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783514840756,
+      "tag": "0002_violet_moira_mactaggert",
+      "breakpoints": true
     }
   ]
 }
