@@ -124,6 +124,15 @@ Before pushing a PR: `pnpm lint && pnpm typecheck && pnpm test` must be green.
 - Conventional Commits: `feat|fix|chore|docs|refactor|perf|test|build|ci`.
 - Branch naming: `agent/<task-id>-<short-desc>` (AI work),
   `feat/<task-id>` (human), `fix/<task-id>` (bugfix).
+- **All constructor-injected providers MUST use explicit `@Inject(Token)`
+  decorators** ([ADR-013](./docs/adr/ADR-013-explicit-inject-decorators.md)).
+  Example: `constructor(@Inject(HealthService) private readonly health:
+  HealthService)`, NOT `constructor(private readonly health: HealthService)`.
+  This is required for tsx/esbuild compatibility in dev mode — esbuild
+  does not emit `emitDecoratorMetadata`, so implicit constructor
+  injection is `undefined` at runtime without the explicit decorator.
+  Enforcement: code review + the `smoke` CI job (which boots the API
+  via tsx and catches `undefined` deps at runtime).
 
 ## Dental Module Rules [Blueprint §9.4]
 

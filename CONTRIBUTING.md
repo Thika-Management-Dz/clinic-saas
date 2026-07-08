@@ -40,6 +40,40 @@ docs(adr): add ADR-011 FHIR export strategy
 Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `perf`, `test`, `build`,
 `ci`.
 
+## Dependency Injection
+
+All constructor-injected providers in NestJS apps (`apps/api`,
+`apps/worker`, any future NestJS app) MUST use explicit `@Inject(Token)`
+decorators — not implicit constructor injection. This is required for
+tsx/esbuild compatibility in dev mode (esbuild does not emit
+`emitDecoratorMetadata`, so implicit injection is `undefined` at runtime
+without the explicit decorator).
+
+See [ADR-013](./docs/adr/ADR-013-explicit-inject-decorators.md) for the
+full rationale, alternatives considered, and enforcement mechanisms.
+
+```typescript
+// ✅ Correct
+import { Controller, Get, Inject } from '@nestjs/common';
+import { HealthService } from './health.service.js';
+
+@Controller()
+export class HealthController {
+  constructor(@Inject(HealthService) private readonly health: HealthService) {}
+}
+
+// ❌ Forbidden — undefined at runtime under tsx/esbuild
+@Controller()
+export class HealthController {
+  constructor(private readonly health: HealthService) {}
+}
+```
+
+Enforcement is via code review + the `smoke` CI job (which boots the API
+via tsx and catches `undefined` deps at runtime). The pattern applies to
+all `@Injectable()`, `@Controller()`, `@Guard()`, `@Interceptor()`,
+`@Pipe()`, and `@Filter()` classes with constructor-injected params.
+
 ## Pull Requests
 
 Use the PR template (`.github/PULL_REQUEST_TEMPLATE.md`). No PR merges
