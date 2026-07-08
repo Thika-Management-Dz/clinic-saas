@@ -29,9 +29,14 @@ if (!dbUrl) {
 }
 
 // dbUrl is narrowed to string after the if-check above.
+// SSL: required for Neon staging (sslmode=require doesn't auto-apply in
+// postgres.js), but NOT for the docker-compose Postgres or the CI service
+// container (neither has SSL enabled). Detect by hostname so the same
+// script works in both environments without an env-var toggle.
+const isLocalhost = (dbUrl ?? '').includes('localhost') || (dbUrl ?? '').includes('127.0.0.1');
 const sql = postgres(dbUrl, {
   max: 1,
-  ssl: 'require',
+  ssl: isLocalhost ? false : 'require',
   idle_timeout: 5,
   connect_timeout: 10,
 });
