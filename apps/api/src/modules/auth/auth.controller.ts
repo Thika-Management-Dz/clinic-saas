@@ -31,6 +31,42 @@ import {
 import { type FastifyReply, type FastifyRequest } from 'fastify';
 import type { TenantRequest } from '@clinic-saas/db';
 
+/**
+ * DTO for switch-tenant endpoint.
+ * Validates that organizationId is a non-empty UUID string.
+ * Per MEDIUM-15 — input validation for user-controlled input.
+ */
+class SwitchTenantDto {
+  /** The target organization ID to switch to. Must be a valid UUID. */
+  organizationId!: string;
+
+  // NOTE: class-validator is not yet installed. Validation is done
+  // manually below. When class-validator is added (Phase 10+), this
+  // class should use @IsUUID('4') and @IsNotEmpty() decorators with
+  // ValidationPipe.
+}
+
+/** Typed response for the /me endpoint. Per MEDIUM-14. */
+interface MeResponse {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    image: string | null;
+  };
+  session: {
+    id: string;
+    activeOrganizationId: string | null;
+    expiresAt: Date;
+  };
+  activeOrganization: { id: string } | null;
+  permissions: string[];
+}
+
+/** Simple UUID v4 validation regex. */
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Controller('auth')
 export class AuthController {
   /**
@@ -47,10 +83,10 @@ export class AuthController {
   async switchTenant(
     @Req() req: FastifyRequest & TenantRequest,
     @Res() res: FastifyReply,
-    @Body() body: { organizationId: string },
+    @Body() body: SwitchTenantDto,
   ): Promise<void> {
-    if (!body.organizationId) {
-      throw new BadRequestException('organizationId is required');
+    if (!body.organizationId || !UUID_V4_RE.test(body.organizationId)) {
+      throw new BadRequestException('organizationId must be a valid UUID v4');
     }
 
     // Build Web API request for Better Auth's setActiveOrganization.
@@ -94,7 +130,7 @@ export class AuthController {
   @Get('me')
   async getMe(
     @Req() req: FastifyRequest & TenantRequest,
-  ): Promise<object> {
+  ): Promise<MeResponse> {
     // Get session from Better Auth.
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
@@ -111,8 +147,7 @@ export class AuthController {
 
     // TODO (Phase 10): Compute effective permissions by walking
     // role_inheritance graph. For now, return the user/org info.
-
-    return {
+    const result: MeResponse = {
       user: {
         id: session.user.id,
         name: session.user.name,
@@ -128,10 +163,12 @@ export class AuthController {
       activeOrganization: session.session.activeOrganizationId
         ? { id: session.session.activeOrganizationId }
         : null,
-      // REVIEW: Add effective permissions list when RBAC walk is
-      // implemented in PermissionsGuard (Phase 10).
-      permissions: [] as string[],
+      // TODO (Phase 10): Compute effective permissions by walking
+      // the role_inheritance graph per Blueprint §9.2.
+      permissions: [],
     };
+
+    return result;
   }
 
   /**
@@ -141,9 +178,12 @@ export class AuthController {
    * Better Auth v1.6+ handler expects a standard Web API Request and
    * returns a Web API Response. We construct a Web Request from the
    * Fastify request properties and proxy the Web Response back.
+   *
+   * No @HttpCode() decorator — the response status is set explicitly
+   * via res.status(webResponse.status) below, preserving Better Auth's
+   * own error status codes (e.g., 401 for invalid credentials).
    */
   @All('*')
-  @HttpCode(200)
   async handleAuth(
     @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
