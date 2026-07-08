@@ -8,7 +8,7 @@
 // app.current_tenant). Phase 7 adds Sentry + PostHog integrations.
 // Phase 13 adds CSP + EgressGuard interceptors.
 
-import { RequestMethod } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -62,6 +62,19 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api', {
     exclude: [{ path: '/', method: RequestMethod.GET }],
   });
+
+  // Global ValidationPipe: triggers class-validator decorators on DTOs
+  // (e.g., SwitchTenantDto). Per MEDIUM-15.
+  // - whitelist: strip non-decorated properties (prevents mass-assignment).
+  // - forbidNonWhitelisted: reject requests with unknown properties.
+  // - transform: convert plain JSON payloads into DTO class instances.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   const port = Number.parseInt(process.env.PORT ?? '3001', 10);
   await app.listen(port, '0.0.0.0');

@@ -19,7 +19,6 @@ import { auth } from '@clinic-saas/auth';
 import type { TenantRequest } from '@clinic-saas/db';
 import {
   All,
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -29,21 +28,21 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
+import { IsNotEmpty, IsUUID } from 'class-validator';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
 
 /**
  * DTO for switch-tenant endpoint.
- * Validates that organizationId is a non-empty UUID string.
- * Per MEDIUM-15 — input validation for user-controlled input.
+ * Validates that organizationId is a non-empty UUID v4 string.
+ * Per MEDIUM-15 — input validation for user-controlled input via
+ * class-validator decorators. The global ValidationPipe (registered
+ * in main.ts) triggers these decorators automatically.
  */
 class SwitchTenantDto {
-  /** The target organization ID to switch to. Must be a valid UUID. */
+  /** The target organization ID to switch to. Must be a valid UUID v4. */
+  @IsUUID('4', { message: 'organizationId must be a valid UUID v4' })
+  @IsNotEmpty({ message: 'organizationId is required' })
   organizationId!: string;
-
-  // NOTE: class-validator is not yet installed. Validation is done
-  // manually below. When class-validator is added (Phase 10+), this
-  // class should use @IsUUID('4') and @IsNotEmpty() decorators with
-  // ValidationPipe.
 }
 
 /** Typed response for the /me endpoint. Per MEDIUM-14. */
@@ -64,9 +63,6 @@ interface MeResponse {
   permissions: string[];
 }
 
-/** Simple UUID v4 validation regex. */
-const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 @Controller('auth')
 export class AuthController {
   /**
@@ -85,9 +81,10 @@ export class AuthController {
     @Res() res: FastifyReply,
     @Body() body: SwitchTenantDto,
   ): Promise<void> {
-    if (!body.organizationId || !UUID_V4_RE.test(body.organizationId)) {
-      throw new BadRequestException('organizationId must be a valid UUID v4');
-    }
+    // ValidationPipe (registered globally in main.ts) runs class-validator
+    // decorators on SwitchTenantDto before this handler executes. Invalid
+    // input results in an automatic 400 Bad Request with a descriptive
+    // message. No manual validation needed here.
 
     // Build Web API request for Better Auth's setActiveOrganization.
     const protocol = req.protocol;
