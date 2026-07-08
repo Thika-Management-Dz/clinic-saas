@@ -13,6 +13,6 @@ import { EgressGuard, createEgressFetch } from './egress.guard.js';
 @Global()
 @Module({
   providers: [EgressGuard],
-  exports: [EgressGuard, createEgressFetch],
+  exports: [EgressGuard],
 })
 export class EgressModule {}
