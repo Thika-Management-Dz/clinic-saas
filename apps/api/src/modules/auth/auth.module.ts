@@ -5,17 +5,17 @@
 //
 // This module provides:
 //   - AuthController: mounts Better Auth's request handler at /api/auth/*
-//   - SessionController: custom endpoints (switch-tenant, /me)
+//     and custom endpoints (switch-tenant, /me)
 //   - PermissionsGuard: RBAC permission checking (Phase 10)
 
 import { Module } from '@nestjs/common';
 
 import { AuthController } from './auth.controller.js';
-import { SessionController } from './session.controller.js';
+import { PermissionsGuard } from './permissions.guard.js';
 
 @Module({
-  controllers: [AuthController, SessionController],
-  providers: [],
-  exports: [],
+  controllers: [AuthController],
+  providers: [PermissionsGuard],
+  exports: [PermissionsGuard],
 })
 export class AuthModule {}
