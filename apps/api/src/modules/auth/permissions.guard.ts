@@ -14,12 +14,11 @@
 // @RequirePermissions).
 
 import type { TenantRequest } from '@clinic-saas/db';
-
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { FastifyRequest } from 'fastify';
 
 import { REQUIRE_PERMISSIONS_KEY } from './permissions.decorator.js';
-import type { FastifyRequest } from 'fastify';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {

@@ -26,6 +26,9 @@
 //   runs after the transaction closes, SET LOCAL is lost and RLS
 //   returns 0 rows for ALL tenant-scoped queries.
 
+import { auth } from '@clinic-saas/auth';
+import type { TenantRequest } from '@clinic-saas/db';
+import { sql } from '@clinic-saas/db';
 import {
   Injectable,
   NestInterceptor,
@@ -35,12 +38,8 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { from, firstValueFrom, Observable, switchMap } from 'rxjs';
-
-import type { TenantRequest } from '@clinic-saas/db';
-import { sql } from '@clinic-saas/db';
-import { auth } from '@clinic-saas/auth';
 import type { FastifyRequest } from 'fastify';
+import { from, firstValueFrom, Observable, switchMap } from 'rxjs';
 
 /** Paths that don't require tenant context.
  *

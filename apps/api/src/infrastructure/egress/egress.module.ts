@@ -7,6 +7,7 @@
 // via a fetch interceptor or HttpService wrapper.
 
 import { Module, Global } from '@nestjs/common';
+
 import { EgressGuard, createEgressFetch } from './egress.guard.js';
 
 @Global()

@@ -20,17 +20,13 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 
+
 import { HealthController } from './health.controller.js';
 import { HealthService } from './health.service.js';
-
-// Module imports only — never import internal files directly (ADR-002).
-import { AuthModule } from './modules/auth/index.js';
-import { AuditModule } from './modules/audit/index.js';
-import { RlsModule } from './infrastructure/rls/index.js';
 import { EgressModule } from './infrastructure/egress/index.js';
-
-// PermissionsGuard from the auth module's public API.
-import { PermissionsGuard } from './modules/auth/index.js';
+import { RlsModule } from './infrastructure/rls/index.js';
+import { AuditModule } from './modules/audit/index.js';
+import { AuthModule, PermissionsGuard } from './modules/auth/index.js';
 
 @Module({
   imports: [AuthModule, AuditModule, RlsModule, EgressModule],

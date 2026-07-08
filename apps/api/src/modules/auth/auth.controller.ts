@@ -16,20 +16,20 @@
 //   GET  /api/auth/me              — current user, tenant, permissions
 
 import { auth } from '@clinic-saas/auth';
+import type { TenantRequest } from '@clinic-saas/db';
 import {
-  Controller,
   All,
-  Post,
+  BadRequestException,
+  Body,
+  Controller,
   Get,
+  HttpCode,
+  Post,
   Req,
   Res,
-  Body,
-  HttpCode,
   UnauthorizedException,
-  BadRequestException,
 } from '@nestjs/common';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
-import type { TenantRequest } from '@clinic-saas/db';
 
 /**
  * DTO for switch-tenant endpoint.
@@ -153,11 +153,11 @@ export class AuthController {
         name: session.user.name,
         email: session.user.email,
         emailVerified: session.user.emailVerified,
-        image: session.user.image,
+        image: session.user.image ?? null,
       },
       session: {
         id: session.session.id,
-        activeOrganizationId: session.session.activeOrganizationId,
+        activeOrganizationId: session.session.activeOrganizationId ?? null,
         expiresAt: session.session.expiresAt,
       },
       activeOrganization: session.session.activeOrganizationId

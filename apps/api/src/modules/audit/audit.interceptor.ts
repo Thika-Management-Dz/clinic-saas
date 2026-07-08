@@ -13,6 +13,8 @@
 // The audit_log write MUST use the tenant transaction (request.__tenantTx),
 // not the global db, because audit_log is RLS-scoped (per ADR-001).
 
+import type { TenantRequest } from '@clinic-saas/db';
+import { getTenantTx } from '@clinic-saas/db';
 import {
   Injectable,
   NestInterceptor,
@@ -20,12 +22,8 @@ import {
   CallHandler,
   Logger,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
 import type { FastifyRequest } from 'fastify';
-
-import type { TenantRequest } from '@clinic-saas/db';
-import { auditLog } from '@clinic-saas/db';
-import { getTenantTx } from '@clinic-saas/db';
+import { Observable, tap } from 'rxjs';
 
 /** HTTP methods that are mutations (require audit logging). */
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -50,49 +48,54 @@ export class AuditInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: async () => {
-          const duration = Date.now() - startTime;
-          this.logger.debug(
-            `Audit: ${method} ${path} | actor=<authenticated> | ${duration}ms`,
-          );
-
-          // Write audit_log row using the tenant transaction.
-          // The hash chain trigger fires automatically on INSERT.
-          try {
-            const tx = getTenantTx(request);
-            const tenantId = request.__tenantId;
-            if (!tenantId) {
-              // No tenant context — cannot write tenant-scoped audit row.
-              // This can happen for exempt paths or unauthenticated requests.
-              return;
-            }
-
-            await tx.insert(auditLog).values({
-              tenantId,
-              actorUserId: request.__userId ?? null,
-              // TODO (Phase 10): Resolve actor role from user_role table.
-              actorRole: 'unknown',
-              action: `${method} ${path}`,
-              // TODO (Phase 10): Resolve entity_type and entity_id from
-              // route parameters when domain controllers exist.
-              entityType: 'unknown',
-              entityId: null,
-              // TODO (Phase 10): Capture before/after state for UPDATE/DELETE.
-              beforeJsonb: null,
-              afterJsonb: null,
-              ipAddress: request.ip,
-              userAgent: request.headers['user-agent'] ?? null,
-              requestId: request.id,
-              outcome: 'success',
-            });
-          } catch (err) {
-            // Audit write failure should not break the response.
-            // Log the error but don't propagate it.
-            this.logger.error(
-              `Failed to write audit log for ${method} ${path}: ` +
-                `${err instanceof Error ? err.message : String(err)}`,
+        next: () => {
+          void (async () => {
+            const duration = Date.now() - startTime;
+            this.logger.debug(
+              `Audit: ${method} ${path} | actor=<authenticated> | ${duration}ms`,
             );
-          }
+
+            // Write audit_log row using the tenant transaction.
+            // The hash chain trigger fires automatically on INSERT.
+            try {
+              const tx = getTenantTx(request);
+              const tenantId = request.__tenantId;
+              if (!tenantId) {
+                // No tenant context — cannot write tenant-scoped audit row.
+                // This can happen for exempt paths or unauthenticated requests.
+                return;
+              }
+
+              await tx`INSERT INTO audit_log (
+                tenant_id, actor_user_id, actor_role, action,
+                entity_type, entity_id, before_jsonb, after_jsonb,
+                ip_address, user_agent, request_id, outcome
+              ) VALUES (
+                ${tenantId}::uuid,
+                NULL,
+                'unknown',
+                ${`${method} ${path}`},
+                'unknown',
+                NULL,
+                NULL,
+                NULL,
+                ${request.ip}::inet,
+                ${request.headers['user-agent'] ?? null},
+                ${request.id},
+                'success'
+              )`;
+              // TODO (Phase 10): Set actor_user_id to the app_user UUID
+              // (not the Better Auth text ID) by looking up the mapping.
+              // Also resolve actor_role from user_role table.
+            } catch (err) {
+              // Audit write failure should not break the response.
+              // Log the error but don't propagate it.
+              this.logger.error(
+                `Failed to write audit log for ${method} ${path}: ` +
+                  `${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          })();
         },
         error: (err) => {
           // Scrub PII from log: no user IDs or tenant IDs per AGENTS.md.

@@ -15,10 +15,10 @@
 // applied. They are designed to compile and pass with correct imports
 // even if they can't run in a sandbox without a DB.
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { NestFactory } from '@nestjs/core';
 import { type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
 
