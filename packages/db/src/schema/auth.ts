@@ -7,6 +7,11 @@
 // global because the login flow must find a user by email WITHOUT a tenant
 // context (P0-6 resolution, 90-4).
 //
+// Intentionally NO deleted_at column: auth tables are global (not
+// tenant-scoped) and managed by Better Auth. Soft deletes apply only to
+// tenant-scoped clinical tables per AGENTS.md Do-NOT #1 and Blueprint §9.1.
+// Better Auth handles its own account lifecycle (deactivation, etc.).
+//
 // The Drizzle adapter for Better Auth reads these table definitions.
 // The adapter schema key names MUST match what Better Auth expects:
 //   user, session, account, verification, organization, member, invitation.
@@ -14,11 +19,14 @@
 import {
   pgTable,
   text,
+  uuid,
   timestamp,
   boolean,
   index,
   unique,
 } from 'drizzle-orm/pg-core';
+
+import { clinic } from './clinic';
 
 export const authUser = pgTable('user', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -80,6 +88,13 @@ export const authOrganization = pgTable('organization', {
   slug: text('slug').notNull().unique(),
   logo: text('logo'),
   metadata: text('metadata'), // JSON string
+  // Links the Better Auth organization to the clinic (tenant) entity.
+  // ADR-004: "organization maps to a clinic (tenant)."
+  // This FK ensures the TenantInterceptor can resolve a real UUID
+  // (matching clinic.id) from the organization, rather than passing
+  // the organization's text ID to set_tenant(uuid).
+  // Set during clinic registration (sign-up flow).
+  clinicId: uuid('clinic_id').references(() => clinic.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

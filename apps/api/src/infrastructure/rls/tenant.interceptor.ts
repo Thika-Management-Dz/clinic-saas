@@ -110,10 +110,27 @@ export class TenantInterceptor implements NestInterceptor {
                 // Store the transaction on the request for downstream services.
                 request.__tenantTx = tx;
 
+                // Resolve the clinic UUID from the organization.
+                // The organization.id is text (Better Auth default), but
+                // set_tenant() takes a UUID matching clinic.id.
+                // ADR-004: organization maps to a clinic (tenant).
+                const orgRows = await tx`SELECT clinic_id FROM organization WHERE id = ${tenantId}`;
+                const clinicId = orgRows[0]?.clinic_id as string | null;
+                if (!clinicId) {
+                  throw new Error(
+                    'Organization has no clinic_id mapping. ' +
+                      'Clinic registration must set organization.clinic_id.',
+                  );
+                }
+
+                // Update request.__tenantId to the real clinic UUID
+                // (not the organization text ID).
+                request.__tenantId = clinicId;
+
                 // CRITICAL: Parameterized query — NEVER string interpolation.
                 // The set_tenant() function is SECURITY DEFINER.
                 // Per 004_set_tenant.sql and P0-3 fix.
-                await tx`SELECT set_tenant(${tenantId})`;
+                await tx`SELECT set_tenant(${clinicId})`;
 
                 // Handler runs INSIDE the transaction so SET LOCAL is active.
                 await firstValueFrom(next.handle());
