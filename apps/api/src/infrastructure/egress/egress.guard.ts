@@ -3,6 +3,12 @@
 // EgressGuard — data-residency enforcement. Per Roadmap v2.1 §5.6
 // and Blueprint §3, §7.3.
 //
+// TODO (Phase 13): This guard is NOT yet active. It is registered as
+// a global provider (EgressModule) but createEgressFetch() is not yet
+// wired into the application's outbound HTTP calls. Phase 13 will
+// integrate this into a fetch interceptor or HttpService wrapper so
+// all outbound requests are automatically checked.
+//
 // Inspects outbound HTTP calls (via a global fetch wrapper) for
 // personal-data fields being sent to non-Algerian hosts.
 //
@@ -16,11 +22,6 @@
 //
 // Allowlist (Algerian sovereign infrastructure + local dev):
 //   CERIST, Djezzy, Algérie Télécom, Mobilis, localhost.
-
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-// NestJS framework types cannot be fully resolved by eslint's
-// projectService in the NestJS CommonJS context. These calls
-// are type-safe at compile time and correct at runtime.
 
 import { Injectable, Logger } from '@nestjs/common';
 
